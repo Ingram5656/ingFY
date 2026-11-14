@@ -152,6 +152,31 @@ async fn spotify_liked(app: AppHandle) -> Result<Option<bool>, String> {
     spotify::is_saved(&token, &uri).await.map(Some)
 }
 
+// ---------- 曲库 ----------
+
+/// 曲库里的专辑（kind = "album"）或歌单（kind = "playlist"）
+#[tauri::command]
+async fn spotify_library(app: AppHandle, kind: String) -> Result<Vec<spotify::ShelfItem>, String> {
+    let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
+    if kind == "album" {
+        spotify::saved_albums(&token).await
+    } else {
+        spotify::my_playlists(&token).await
+    }
+}
+
+#[tauri::command]
+async fn spotify_search(app: AppHandle, query: String, kind: String) -> Result<Vec<spotify::ShelfItem>, String> {
+    let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
+    spotify::search(&token, query.trim(), &kind).await
+}
+
+#[tauri::command]
+async fn spotify_play(app: AppHandle, uri: String) -> Result<(), String> {
+    let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
+    spotify::play_context(&token, &uri).await
+}
+
 #[tauri::command]
 async fn spotify_set_liked(app: AppHandle, liked: bool) -> Result<bool, String> {
     let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
@@ -247,6 +272,9 @@ pub fn run() {
             spotify_logout,
             spotify_liked,
             spotify_set_liked,
+            spotify_library,
+            spotify_search,
+            spotify_play,
             set_desktop_locked,
             set_desktop_visible
         ])

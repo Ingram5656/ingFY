@@ -1,0 +1,469 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type WheelEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { PlayIcon } from "./Icons";
+
+export type ShelfKind = "playlist" | "album";
+
+export interface ShelfItem {
+  uri: string;
+  name: string;
+  /** 专辑是歌手，歌单是创建者 */
+  subtitle: string;
+  image: string | null;
+  kind: ShelfKind;
+}
+
+interface Props {
+  kind: ShelfKind;
+  loggedIn: boolean;
+  needsReauth: boolean;
+  loginBusy: boolean;
+  onLogin: () => void;
+  searchOpen: boolean;
+  onCloseSearch: () => void;
+}
+
+/** 曲库内容按类型缓存，切页面再回来不用重新拉 */
+const libraryCache = new Map<ShelfKind, ShelfItem[]>();
+
+const SPACING = 116; // 相邻两张在架子上的间距（设计稿像素）
+const RENDER_RANGE = 9; // 只画当前位置左右各 9 张
+const WHEEL_STEP = 90; // 滚轮累计多少算翻一张：普通鼠标一格（100）正好翻一张，触控板慢慢滑也能翻
+
+/**
+ * 曲库 / 专辑：一排竖着插在架子上的封面，像在唱片箱里翻唱片。
+ * - 滚轮左右翻；点旁边的一张会翻到它；点正中间那张把它抽出来正对你，再点播放。
+ * - 右上角搜索：在 Spotify 曲库里搜，或者只在自己的歌单 / 专辑里筛。
+ */
+export function LibraryView(p: Props) {
+  const [items, setItems] = useState<ShelfItem[] | null>(() => libraryCache.get(p.kind) ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; kind: "ok" | "error" } | null>(null);
+
+  // ---- 拉曲库 ----
+  const load = useCallback(() => {
+    if (!p.loggedIn) return;
+    setError(null);
+    invoke<ShelfItem[]>("spotify_library", { kind: p.kind })
+      .then((list) => {
+        libraryCache.set(p.kind, list);
+        setItems(list);
+      })
+      .catch((e) => setError(String(e)));
+  }, [p.kind, p.loggedIn]);
+
+  useEffect(() => {
+    setItems(libraryCache.get(p.kind) ?? null);
+    load();
+  }, [load, p.kind]);
+
+  // ---- 搜索 ----
+  const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<"spotify" | "mine">("mine");
+  const [remote, setRemote] = useState<{ q: string; list: ShelfItem[] } | null>(null);
+  const [searching, setSearching] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (p.searchOpen) inputRef.current?.focus();
+    else {
+      setQuery("");
+      setRemote(null);
+    }
+  }, [p.searchOpen]);
+
+  // 换页面时清掉搜索
+  useEffect(() => {
+    setQuery("");
+    setRemote(null);
+  }, [p.kind]);
+
+  // Spotify 曲库搜索：停止输入 450ms 后再发请求
+  useEffect(() => {
+    const q = query.trim();
+    if (scope !== "spotify" || !q) {
+      setRemote(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    let alive = true;
+    const t = setTimeout(() => {
+      invoke<ShelfItem[]>("spotify_search", { query: q, kind: p.kind })
+        .then((list) => alive && setRemote({ q, list }))
+        .catch((e) => alive && setToast({ text: String(e), kind: "error" }))
+        .finally(() => alive && setSearching(false));
+    }, 450);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [query, scope, p.kind]);
+
+  const q = query.trim().toLowerCase();
+  const shown: ShelfItem[] = useMemo(() => {
+    if (!q) return items ?? [];
+    if (scope === "spotify") return remote?.list ?? [];
+    return (items ?? []).filter((it) => it.name.toLowerCase().includes(q) || it.subtitle.toLowerCase().includes(q));
+  }, [q, scope, items, remote]);
+
+  // 提示条 3 秒后消失
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const play = async (it: ShelfItem) => {
+    setToast({ text: `正在打开《${it.name}》…`, kind: "ok" });
+    try {
+      await invoke("spotify_play", { uri: it.uri });
+      setToast({ text: `开始播放《${it.name}》`, kind: "ok" });
+    } catch (e) {
+      setToast({ text: String(e), kind: "error" });
+    }
+  };
+
+  const mineLabel = p.kind === "playlist" ? "我的歌单" : "我的专辑";
+  const noun = p.kind === "playlist" ? "歌单" : "专辑";
+
+  let empty: { text: string; action?: { label: string; run: () => void } } | null = null;
+  if (!p.loggedIn) {
+    empty = {
+      text: `连接 Spotify 后，这里会摆满你的${noun}`,
+      action: { label: p.loginBusy ? "正在连接…" : "连接 Spotify", run: p.onLogin },
+    };
+  } else if (p.needsReauth) {
+    empty = { text: "曲库需要新的 Spotify 权限，重新连接一次就好", action: { label: "重新连接", run: p.onLogin } };
+  } else if (error && !items) {
+    empty = { text: error, action: { label: "重试", run: load } };
+  } else if (!items) {
+    empty = { text: `正在读取你的${noun}…` };
+  } else if (q && scope === "spotify" && searching && !remote) {
+    empty = { text: "正在 Spotify 里搜…" };
+  } else if (q && shown.length === 0) {
+    empty = { text: scope === "spotify" ? `Spotify 里没搜到相关的${noun}` : `${mineLabel}里没有"${query.trim()}"` };
+  } else if (shown.length === 0) {
+    empty = { text: p.kind === "playlist" ? "你还没有歌单，去 Spotify 里建一个或关注几个吧" : "你还没有收藏专辑，在 Spotify 里点专辑页的加号就能收藏" };
+  }
+
+  return (
+    <>
+      {p.searchOpen && (
+        <div className="lib-search glass" role="search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" />
+          </svg>
+          <input
+            ref={inputRef}
+            value={query}
+            placeholder={scope === "spotify" ? `在 Spotify 搜${noun}` : `在${mineLabel}里找`}
+            aria-label="搜索"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") p.onCloseSearch();
+            }}
+          />
+          <div className="lib-scope" role="radiogroup" aria-label="搜索范围">
+            {(
+              [
+                ["mine", mineLabel],
+                ["spotify", "Spotify 曲库"],
+              ] as const
+            ).map(([id, label]) => (
+              <button key={id} role="radio" aria-checked={scope === id} className={scope === id ? "is-on" : ""} onClick={() => setScope(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button className="lib-close" aria-label="关闭搜索" onClick={p.onCloseSearch}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {empty ? (
+        <div className="lib-empty">
+          <p>{empty.text}</p>
+          {empty.action && (
+            <button className="st-btn" onClick={empty.action.run}>
+              {empty.action.label}
+            </button>
+          )}
+        </div>
+      ) : (
+        <Shelf key={`${p.kind}|${scope}|${q}`} items={shown} onPlay={play} />
+      )}
+
+      {toast && (
+        <div className={`toast glass${toast.kind === "error" ? " toast--error" : ""}`} role="status">
+          {toast.text}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ 架子
+
+function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) => void }) {
+  const n = items.length;
+  const [pos, setPos] = useState(0);
+  const [picked, setPickedRaw] = useState<number | null>(null);
+  // 抽出 / 放回唱片时给 0.5 秒的过渡；平时翻动由 JS 逐帧驱动，不加过渡免得拖泥带水
+  const [pickAnim, setPickAnim] = useState(false);
+  const pickTimer = useRef<ReturnType<typeof setTimeout>>();
+  const setPicked = useCallback((v: number | null | ((cur: number | null) => number | null)) => {
+    setPickedRaw(v);
+    setPickAnim(true);
+    clearTimeout(pickTimer.current);
+    pickTimer.current = setTimeout(() => setPickAnim(false), 550);
+  }, []);
+  const target = useRef(0);
+  const posRef = useRef(0);
+  const raf = useRef(0);
+  const acc = useRef(0);
+  const accTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // 位置向目标平滑靠拢，到了就停，不一直重绘
+  const animate = useCallback(() => {
+    cancelAnimationFrame(raf.current);
+    const step = () => {
+      const diff = target.current - posRef.current;
+      if (Math.abs(diff) < 0.002) {
+        posRef.current = target.current;
+        setPos(target.current);
+        return;
+      }
+      posRef.current += diff * 0.16;
+      setPos(posRef.current);
+      raf.current = requestAnimationFrame(step);
+    };
+    raf.current = requestAnimationFrame(step);
+  }, []);
+
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(raf.current);
+      clearTimeout(pickTimer.current);
+      clearTimeout(accTimer.current);
+    },
+    [],
+  );
+
+  const goTo = useCallback(
+    (i: number) => {
+      const t = Math.max(0, Math.min(n - 1, i));
+      if (t === target.current) return;
+      target.current = t;
+      setPicked(null);
+      animate();
+    },
+    [n, animate, setPicked],
+  );
+
+  const onWheel = (e: WheelEvent<HTMLDivElement>) => {
+    // 竖着滚和横着滑都算左右翻
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    acc.current += d;
+    clearTimeout(accTimer.current);
+    accTimer.current = setTimeout(() => (acc.current = 0), 220);
+    const steps = Math.trunc(acc.current / WHEEL_STEP);
+    if (steps !== 0) {
+      acc.current -= steps * WHEEL_STEP;
+      goTo(Math.round(target.current) + Math.max(-3, Math.min(3, steps)));
+    }
+  };
+
+  const center = Math.round(pos);
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowRight") goTo(center + 1);
+    else if (e.key === "ArrowLeft") goTo(center - 1);
+    else if (e.key === "Enter") {
+      if (picked === center) onPlay(items[center]);
+      else setPicked(center);
+    } else if (e.key === "Escape") setPicked(null);
+    else return;
+    e.preventDefault();
+  };
+
+  const onPick = (i: number) => {
+    if (i !== center) goTo(i);
+    else setPicked((cur) => (cur === i ? null : i));
+  };
+  // 点架子空白处把抽出来的唱片放回去
+  const onBackdrop = () => {
+    if (picked !== null) setPicked(null);
+  };
+
+  const from = Math.max(0, Math.floor(pos) - RENDER_RANGE);
+  const to = Math.min(n - 1, Math.ceil(pos) + RENDER_RANGE);
+  const visible: number[] = [];
+  for (let i = from; i <= to; i++) visible.push(i);
+
+  return (
+    <div
+      className={`shelf${picked !== null ? " has-picked" : ""}${pickAnim ? " is-picking" : ""}`}
+      onWheel={onWheel}
+      onKeyDown={onKey}
+      tabIndex={0}
+      role="listbox"
+      aria-label="唱片架，滚轮左右翻"
+      aria-activedescendant={n ? `rec-${center}` : undefined}
+      onClick={onBackdrop}
+    >
+      <div className="shelf-row">
+        {visible.map((i) => (
+          <Record
+            key={items[i].uri + i}
+            id={`rec-${i}`}
+            item={items[i]}
+            d={i - pos}
+            picked={picked === i}
+            pickedSide={picked === null ? 0 : Math.sign(i - picked)}
+            onPick={() => onPick(i)}
+            onPlay={() => onPlay(items[i])}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface RecordProps {
+  id: string;
+  item: ShelfItem;
+  /** 相对当前位置的偏移，0 是正中间，可以是小数（翻动途中） */
+  d: number;
+  picked: boolean;
+  /** 有一张被抽出来时，其他唱片往两边让：-1 左边让，1 右边让 */
+  pickedSide: number;
+  onPick: () => void;
+  onPlay: () => void;
+}
+
+const Record = memo(function Record({ id, item, d, picked, pickedSide, onPick, onPlay }: RecordProps) {
+  const spine = useSpineColor(item.image);
+  const ad = Math.abs(d);
+  // 竖着插在架子上：越靠中间越接近侧面朝前（只看到书脊），越往两边露出的封面越多
+  const turn = 90 - Math.min(ad, 4) * 6;
+  const rot = d <= 0 ? turn : -turn;
+  const style = {
+    "--x": `${d * SPACING + pickedSide * 260}px`,
+    "--rot": picked ? "0deg" : `${rot}deg`,
+    "--z": picked ? "180px" : `${-Math.min(ad, 6) * 14}px`,
+    "--blur": `${Math.max(0, ad - 5.5) * 3}px`,
+    "--fade": ad > RENDER_RANGE - 1 ? Math.max(0, RENDER_RANGE - ad) : 1,
+    "--spine": spine.bg,
+    "--spine-ink": spine.ink,
+    zIndex: picked ? 100 : 50 - Math.round(ad * 2),
+  } as CSSProperties;
+  const title = `${item.name}${item.subtitle ? `，${item.subtitle}` : ""}`;
+
+  return (
+    <div
+      id={id}
+      className={`rec${picked ? " is-picked" : ""}`}
+      style={style}
+      role="option"
+      aria-selected={ad < 0.5}
+      aria-label={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick();
+      }}
+    >
+      <div className="rec-face rec-front">
+        {item.image ? <img src={item.image} alt="" draggable={false} /> : <span className="rec-noimg">{item.name.slice(0, 2)}</span>}
+        {picked && (
+          <div className="rec-info">
+            <div>
+              <strong>{item.name}</strong>
+              {item.subtitle && <span>{item.subtitle}</span>}
+            </div>
+            <button
+              className="rec-play"
+              aria-label={`播放${item.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlay();
+              }}
+            >
+              <PlayIcon size={30} />
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="rec-face rec-back" />
+      <Spine side="l" name={item.name} sub={item.subtitle} />
+      <Spine side="r" name={item.name} sub={item.subtitle} />
+    </div>
+  );
+});
+
+function Spine({ side, name, sub }: { side: "l" | "r"; name: string; sub: string }) {
+  return (
+    <div className={`rec-face rec-spine rec-spine--${side}`} aria-hidden="true">
+      <span>
+        <b>{name}</b>
+        {sub && <i>{sub}</i>}
+      </span>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ 书脊颜色
+
+const spineCache = new Map<string, { bg: string; ink: string }>();
+const DEFAULT_SPINE = { bg: "#f1efe9", ink: "#1d1d1f" };
+
+/** 书脊用封面左边一条的平均色，像真的唱片封套；读不到（跨域被拦）就用米白 */
+function useSpineColor(url: string | null) {
+  const [c, setC] = useState(() => (url && spineCache.get(url)) || DEFAULT_SPINE);
+  useEffect(() => {
+    if (!url) return;
+    const hit = spineCache.get(url);
+    if (hit) {
+      setC(hit);
+      return;
+    }
+    let alive = true;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const cv = document.createElement("canvas");
+        cv.width = 4;
+        cv.height = 16;
+        const ctx = cv.getContext("2d")!;
+        // 只取最左边 6% 的一条
+        ctx.drawImage(img, 0, 0, Math.max(1, img.width * 0.06), img.height, 0, 0, 4, 16);
+        const data = ctx.getImageData(0, 0, 4, 16).data;
+        let r = 0, g = 0, b = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+        }
+        const k = data.length / 4;
+        r = Math.round(r / k);
+        g = Math.round(g / k);
+        b = Math.round(b / k);
+        const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const v = { bg: `rgb(${r}, ${g}, ${b})`, ink: lum > 150 ? "#1d1d1f" : "#ffffff" };
+        spineCache.set(url, v);
+        if (alive) setC(v);
+      } catch {
+        spineCache.set(url, DEFAULT_SPINE);
+      }
+    };
+    img.src = url;
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+  return c;
+}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCrossfade, useIdle, useSegThumb } from "../lib/motion";
+import { LibraryView } from "../components/Shelf";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -89,6 +90,7 @@ export default function FullScreen() {
   const spotify = useSpotify(now);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [vinylMenuOpen, setVinylMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const fullscreen = useFullscreen();
   // 启动时桌面歌词默认不显示，点右上角按钮打开
   const [desktopVisible, setDesktopVisible] = useState(false);
@@ -109,6 +111,7 @@ export default function FullScreen() {
   const heartDisabled = spotify.account.loggedIn && !spotify.account.needsReauth && spotify.liked === null;
 
   const vinyl = settings.viewMode === "vinyl";
+  const library = settings.viewMode === "playlists" || settings.viewMode === "albums";
   // 歌词 ⇄ 唱片：新旧两层同时淡入淡出，320ms 内完成
   const modeLayers = useCrossfade(settings.viewMode, 320);
   // 灯效切换：旧灯效收起、新灯效展开
@@ -116,7 +119,7 @@ export default function FullScreen() {
   const modeSegRef = useRef<HTMLDivElement>(null);
   const lightSegRef = useRef<HTMLDivElement>(null);
   // 3 秒没动鼠标就收起上下栏，只留中间；开着面板或菜单时不收
-  const idle = useIdle(3000, settingsOpen || vinylMenuOpen);
+  const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen);
   // 上下栏收起再出现时也重新量一次滑块位置
   useSegThumb(modeSegRef, `${settings.viewMode}|${idle}`);
   useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}`);
@@ -147,6 +150,8 @@ export default function FullScreen() {
               [
                 ["lyrics", "歌词"],
                 ["vinyl", "唱片"],
+                ["playlists", "曲库"],
+                ["albums", "专辑"],
               ] as const
             ).map(([id, name]) => (
               <button
@@ -158,13 +163,14 @@ export default function FullScreen() {
                 onClick={() => {
                   update({ viewMode: id });
                   setVinylMenuOpen(false);
+                  setSearchOpen(false);
                 }}
               >
                 {name}
               </button>
             ))}
           </div>
-          {!vinyl && (
+          {settings.viewMode === "lyrics" && (
           <div className={`seg seg--lights glass${settings.lightsOn ? "" : " is-off"}`} role="group" aria-label="拾音灯">
             {/* 拾音灯总开关，和灯效切换共用一条工具栏 */}
             <button
@@ -199,6 +205,19 @@ export default function FullScreen() {
           </div>
           )}
           <div className="pill glass">
+            {library && (
+              <button
+                className="ibtn"
+                aria-label={searchOpen ? "关闭搜索" : "搜索"}
+                aria-pressed={searchOpen}
+                onClick={() => setSearchOpen((v) => !v)}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M20 20l-3.5-3.5" />
+                </svg>
+              </button>
+            )}
             {vinyl && (
               <button
                 className="ibtn"
@@ -233,7 +252,17 @@ export default function FullScreen() {
 
         {modeLayers.map(({ key, leaving }) => (
           <div key={key} className={`mode-layer${leaving ? " is-leaving" : " is-entering"}`} aria-hidden={leaving || undefined}>
-            {key === "vinyl" ? (
+            {key === "playlists" || key === "albums" ? (
+              <LibraryView
+                kind={key === "albums" ? "album" : "playlist"}
+                loggedIn={spotify.account.loggedIn}
+                needsReauth={spotify.account.needsReauth}
+                loginBusy={spotify.busy}
+                onLogin={spotify.login}
+                searchOpen={searchOpen && !leaving}
+                onCloseSearch={() => setSearchOpen(false)}
+              />
+            ) : key === "vinyl" ? (
             <VinylView
               now={now}
               position={position}

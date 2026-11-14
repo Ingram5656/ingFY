@@ -8,6 +8,7 @@
 //! 5. 用 code + code_verifier 换 access_token / refresh_token，存到本地
 //!
 //! 收藏用 2026 年 2 月之后的新接口 /me/library（参数是 spotify:track:xxx 形式的 URI）。
+//! 曲库：读取收藏的专辑、自己的歌单，搜索 Spotify 曲库，从某张专辑 / 某个歌单开始播放。
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -23,10 +24,12 @@ const LISTEN_ADDR: &str = "127.0.0.1:43821";
 /// 2026 年 2 月的新收藏接口 /me/library 合并了歌曲、专辑、关注、歌单，
 /// 官方文档要求同时具备 user-library-modify、user-follow-modify、playlist-modify-public 三个权限，
 /// 查询接口 /me/library/contains 同理需要对应的读取权限。
+/// 曲库页面点封面播放需要 user-modify-playback-state（只有 Premium 账号能用）。
 const SCOPES: &str = "user-library-read user-library-modify user-follow-read user-follow-modify \
-playlist-read-private playlist-modify-public user-read-currently-playing user-read-playback-state";
-/// 判断旧登录是否缺少新接口需要的权限
-const REQUIRED_SCOPE: &str = "playlist-modify-public";
+playlist-read-private playlist-modify-public user-read-currently-playing user-read-playback-state \
+user-modify-playback-state";
+/// 判断旧登录是否缺少现在需要的权限，缺了就提示重新连接
+const REQUIRED_SCOPES: &[&str] = &["playlist-modify-public", "user-modify-playback-state"];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Tokens {
@@ -44,7 +47,7 @@ pub struct Tokens {
 impl Tokens {
     /// 旧版本登录时没有申请新收藏接口需要的权限，需要重新连接
     pub fn needs_reauth(&self) -> bool {
-        !self.scope.split_whitespace().any(|s| s == REQUIRED_SCOPE)
+        REQUIRED_SCOPES.iter().any(|need| !self.scope.split_whitespace().any(|s| s == *need))
     }
 }
 
@@ -360,4 +363,206 @@ pub async fn set_saved(access: &str, uri: &str, saved: bool) -> Result<(), Strin
         429 => format!("操作太频繁了，等几秒再{action}"),
         code => format!("{action}失败（Spotify 返回 {code}），稍后再试"),
     })
+}
+
+// ---------- 曲库 ----------
+
+/// 唱片架上的一张：专辑或歌单
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShelfItem {
+    /// spotify:album:xxx / spotify:playlist:xxx，播放时用
+    pub uri: String,
+    pub name: String,
+    /// 专辑是歌手，歌单是创建者
+    pub subtitle: String,
+    pub image: Option<String>,
+    pub kind: String,
+}
+
+/// 封面挑一张 300px 左右的，够清晰又不会太大
+fn pick_image(v: &serde_json::Value) -> Option<String> {
+    let imgs = v.get("images")?.as_array()?;
+    let mut best: Option<(i64, String)> = None;
+    for img in imgs {
+        let Some(url) = img.get("url").and_then(|u| u.as_str()) else { continue };
+        let w = img.get("width").and_then(|w| w.as_i64()).unwrap_or(300);
+        let score = (w - 320).abs();
+        if best.as_ref().map_or(true, |(b, _)| score < *b) {
+            best = Some((score, url.to_string()));
+        }
+    }
+    best.map(|(_, u)| u)
+}
+
+fn album_item(a: &serde_json::Value) -> Option<ShelfItem> {
+    let artists = a
+        .get("artists")
+        .and_then(|x| x.as_array())
+        .map(|xs| xs.iter().filter_map(|x| x.get("name")?.as_str()).collect::<Vec<_>>().join(" · "))
+        .unwrap_or_default();
+    Some(ShelfItem {
+        uri: a.get("uri")?.as_str()?.to_string(),
+        name: a.get("name")?.as_str()?.to_string(),
+        subtitle: artists,
+        image: pick_image(a),
+        kind: "album".into(),
+    })
+}
+
+fn playlist_item(p: &serde_json::Value) -> Option<ShelfItem> {
+    let owner = p
+        .pointer("/owner/display_name")
+        .and_then(|x| x.as_str())
+        .or_else(|| p.pointer("/owner/id").and_then(|x| x.as_str()))
+        .unwrap_or("")
+        .to_string();
+    Some(ShelfItem {
+        uri: p.get("uri")?.as_str()?.to_string(),
+        name: p.get("name")?.as_str()?.to_string(),
+        subtitle: owner,
+        image: pick_image(p),
+        kind: "playlist".into(),
+    })
+}
+
+/// 把 Spotify 的错误码翻译成能看懂的话
+fn api_error(status: u16, what: &str) -> String {
+    match status {
+        401 => "登录已失效，请在设置里重新连接 Spotify".to_string(),
+        403 => format!("Spotify 拒绝了{what}：可能需要重新连接 Spotify 授权新权限，播放还需要 Premium 账号"),
+        404 => format!("{what}失败：没找到可以播放的设备，先打开 Spotify 客户端"),
+        429 => "请求太频繁了，等几秒再试".to_string(),
+        code => format!("{what}失败（Spotify 返回 {code}），稍后再试"),
+    }
+}
+
+async fn get_json(url: &str, query: &[(&str, String)], access: &str, what: &str) -> Result<serde_json::Value, String> {
+    let resp = client()?
+        .get(url)
+        .query(query)
+        .bearer_auth(access)
+        .send()
+        .await
+        .map_err(|_| "连不上 Spotify，检查一下网络".to_string())?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(api_error(status.as_u16(), what));
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+/// 收藏的专辑（最多 300 张，按收藏时间从新到旧）
+pub async fn saved_albums(access: &str) -> Result<Vec<ShelfItem>, String> {
+    let mut out = Vec::new();
+    for page in 0..6 {
+        let v = get_json(
+            "https://api.spotify.com/v1/me/albums",
+            &[("limit", "50".into()), ("offset", (page * 50).to_string())],
+            access,
+            "读取收藏的专辑",
+        )
+        .await?;
+        let items = v.get("items").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+        out.extend(items.iter().filter_map(|it| it.get("album").and_then(album_item)));
+        if v.get("next").map_or(true, |n| n.is_null()) {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// 自己创建和关注的歌单（最多 300 个）
+pub async fn my_playlists(access: &str) -> Result<Vec<ShelfItem>, String> {
+    let mut out = Vec::new();
+    for page in 0..6 {
+        let v = get_json(
+            "https://api.spotify.com/v1/me/playlists",
+            &[("limit", "50".into()), ("offset", (page * 50).to_string())],
+            access,
+            "读取歌单",
+        )
+        .await?;
+        let items = v.get("items").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+        out.extend(items.iter().filter_map(playlist_item));
+        if v.get("next").map_or(true, |n| n.is_null()) {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// 搜索 Spotify 曲库。2026 年 2 月起每页最多 10 条，这里取两页共 20 条。
+pub async fn search(access: &str, query: &str, kind: &str) -> Result<Vec<ShelfItem>, String> {
+    let kind = if kind == "album" { "album" } else { "playlist" };
+    let mut out = Vec::new();
+    for offset in [0, 10] {
+        let v = get_json(
+            "https://api.spotify.com/v1/search",
+            &[("q", query.to_string()), ("type", kind.into()), ("limit", "10".into()), ("offset", offset.to_string())],
+            access,
+            "搜索",
+        )
+        .await?;
+        // 歌单搜索结果里偶尔会有 null，跳过
+        let items = v.pointer(&format!("/{kind}s/items")).and_then(|x| x.as_array()).cloned().unwrap_or_default();
+        let before = out.len();
+        out.extend(items.iter().filter(|x| !x.is_null()).filter_map(|x| if kind == "album" { album_item(x) } else { playlist_item(x) }));
+        if out.len() - before < 10 && items.len() < 10 {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// 从某张专辑 / 某个歌单开始播放（需要 Premium）。
+/// 没有正在使用的设备时，挑一个设备（优先这台电脑）再播；一个设备都没有就先打开 Spotify 客户端。
+pub async fn play_context(access: &str, context_uri: &str) -> Result<(), String> {
+    let body = serde_json::json!({ "context_uri": context_uri });
+    let try_play = |device: Option<String>| {
+        let body = body.clone();
+        async move {
+            let c = client()?;
+            let mut req = c.put("https://api.spotify.com/v1/me/player/play").bearer_auth(access).json(&body);
+            if let Some(id) = device {
+                req = req.query(&[("device_id", id)]);
+            }
+            let resp = req.send().await.map_err(|_| "连不上 Spotify，检查一下网络".to_string())?;
+            Ok::<u16, String>(resp.status().as_u16())
+        }
+    };
+
+    let status = try_play(None).await?;
+    if (200..300).contains(&status) {
+        return Ok(());
+    }
+    if status != 404 {
+        return Err(api_error(status, "播放"));
+    }
+
+    // 没有活动设备：找一个
+    for attempt in 0..2 {
+        let v = get_json("https://api.spotify.com/v1/me/player/devices", &[], access, "查找播放设备").await?;
+        let devices = v.get("devices").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+        let pick = devices
+            .iter()
+            .find(|d| d.get("type").and_then(|t| t.as_str()) == Some("Computer"))
+            .or_else(|| devices.first())
+            .and_then(|d| d.get("id").and_then(|i| i.as_str()).map(str::to_string));
+        if let Some(id) = pick {
+            let status = try_play(Some(id)).await?;
+            return if (200..300).contains(&status) { Ok(()) } else { Err(api_error(status, "播放")) };
+        }
+        if attempt == 0 {
+            // 一个设备都没有：打开 Spotify 客户端，等它连上
+            let _ = open::that("spotify:");
+            wait_for(Duration::from_secs(4)).await;
+        }
+    }
+    Err("没找到可以播放的设备：打开 Spotify 客户端后再点一次".to_string())
+}
+
+/// 异步等待：放到后台线程里睡，不占用异步运行时
+async fn wait_for(d: Duration) {
+    let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(d)).await;
 }

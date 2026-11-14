@@ -28,8 +28,8 @@ export interface Settings {
   lightColorMode: "album" | "custom";
   lightA: string;
   lightB: string;
-  /** 主界面显示歌词还是唱片 */
-  viewMode: "lyrics" | "vinyl";
+  /** 主界面显示歌词、唱片，还是曲库（歌单）/ 专辑 */
+  viewMode: "lyrics" | "vinyl" | "playlists" | "albums";
   /** 唱片中间的标签：专辑封面 / 当前歌词 / 纯色印歌名 */
   vinylLabel: "album" | "lyric" | "solid";
   vinylLabelColor: string;
