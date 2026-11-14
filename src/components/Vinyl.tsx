@@ -142,6 +142,9 @@ export function VinylView(p: Props) {
     e.currentTarget.setPointerCapture(e.pointerId);
     discStart.current = { x: e.clientX, id: e.pointerId };
     setDiscDrag({ x: 0, flung: 0 });
+    // 唱针快速抬起
+    setFastArm(true);
+    clearTimeout(armTimer.current);
   };
   const discMove = (e: PointerEvent<HTMLDivElement>) => {
     const st = discStart.current;
@@ -156,6 +159,7 @@ export function VinylView(p: Props) {
     const dx = (e.clientX - st.x) / stageScale(e.currentTarget);
     if (Math.abs(dx) < 150) {
       setDiscDrag(null); // 没推够：弹回原位
+      dropArmFast();
       return;
     }
     const d: 1 | -1 = dx < 0 ? 1 : -1;
@@ -163,14 +167,28 @@ export function VinylView(p: Props) {
     setDiscDrag({ x: dx, flung: d });
     markDirection(d);
     void mediaControl(d > 0 ? "next" : "previous");
-    // 播放器没换歌（比如"上一首"在歌曲中段只会回到开头）：唱片转回来
+    // 播放器没换歌（比如"上一首"在歌曲中段只会回到开头）：唱片转回来，唱针快速落回
     clearTimeout(flingTimer.current);
     flingTimer.current = setTimeout(() => {
       flung.current = false;
       setDiscDrag(null);
-    }, 1600);
+      dropArmFast();
+    }, 900);
   };
-  useEffect(() => () => clearTimeout(flingTimer.current), []);
+  // 唱片拖完回到原位时，唱针用落针的速度（0.4 秒）回去，而不是平时暂停/继续的慢速
+  const armTimer = useRef<ReturnType<typeof setTimeout>>();
+  const dropArmFast = () => {
+    setFastArm(true);
+    clearTimeout(armTimer.current);
+    armTimer.current = setTimeout(() => setFastArm(false), DROP_MS + 150);
+  };
+  useEffect(
+    () => () => {
+      clearTimeout(flingTimer.current);
+      clearTimeout(armTimer.current);
+    },
+    [],
+  );
 
   // 换歌：抬针 → 旧唱片滑出、新唱片滑入 → 落针
   useEffect(() => {
