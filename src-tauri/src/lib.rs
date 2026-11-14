@@ -721,7 +721,8 @@ fn settle_island(app: &AppHandle, win: &WebviewWindow) {
         let _ = win.set_position(PhysicalPosition::new(pos.x, top));
     }
     let changed = {
-        let mut st = app.state::<AppState>().island.lock().unwrap();
+        let state = app.state::<AppState>();
+        let mut st = state.island.lock().unwrap();
         let changed = st.docked != docked;
         st.docked = docked;
         changed
@@ -737,7 +738,8 @@ fn spawn_island_watcher(app: AppHandle) {
         std::thread::sleep(std::time::Duration::from_millis(50));
         let Some(win) = app.get_webview_window("island") else { continue };
         let (visible, locked, last_move) = {
-            let st = app.state::<AppState>().island.lock().unwrap();
+            let state = app.state::<AppState>();
+            let st = state.island.lock().unwrap();
             (st.visible, st.locked, st.last_move)
         };
         if !visible {
@@ -755,7 +757,8 @@ fn spawn_island_watcher(app: AppHandle) {
                 _ => false,
             };
             let changed = {
-                let mut st = app.state::<AppState>().island.lock().unwrap();
+                let state = app.state::<AppState>();
+                let mut st = state.island.lock().unwrap();
                 let changed = st.hover != inside;
                 st.hover = inside;
                 changed
