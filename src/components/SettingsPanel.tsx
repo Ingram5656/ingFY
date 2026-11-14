@@ -252,7 +252,7 @@ export function SettingsPanel(p: Props) {
 
   return (
     <div className="st-backdrop" onPointerDown={(e) => e.target === e.currentTarget && p.onClose()}>
-      <div className="st-panel glass" role="dialog" aria-modal="true" aria-labelledby="st-title">
+      <div className="st-panel glass glass--thick" role="dialog" aria-modal="true" aria-labelledby="st-title">
         <header className="st-head">
           <h2 id="st-title">设置</h2>
           <button className="st-btn" onClick={p.onClose}>完成</button>
@@ -482,13 +482,13 @@ export function SettingsPanel(p: Props) {
                   )}
                 </span>
                 {p.account.loggedIn && p.account.needsReauth ? (
-                  <button className="st-btn st-btn--primary" onClick={p.onLogin} disabled={p.accountBusy}>
+                  <button className="st-btn st-btn--spotify" onClick={p.onLogin} disabled={p.accountBusy}>
                     {p.accountBusy ? "等待浏览器授权…" : "重新连接"}
                   </button>
                 ) : p.account.loggedIn ? (
                   <button className="st-btn" onClick={p.onLogout}>断开</button>
                 ) : (
-                  <button className="st-btn st-btn--primary" onClick={p.onLogin} disabled={p.accountBusy}>
+                  <button className="st-btn st-btn--spotify" onClick={p.onLogin} disabled={p.accountBusy}>
                     {p.accountBusy ? "等待浏览器授权…" : "连接 Spotify"}
                   </button>
                 )}

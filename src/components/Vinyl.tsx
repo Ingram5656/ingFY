@@ -18,6 +18,7 @@ import {
   takeDirection,
 } from "../lib/vinyl";
 import { mediaControl } from "../lib/player";
+import { Presence } from "./Presence";
 
 // ---------- 单张唱片 ----------
 
@@ -371,7 +372,9 @@ export function VinylView(p: Props) {
         {now?.album && <p className="album">{now.album}</p>}
       </div>
 
-      {p.menuOpen && <VinylMenu settings={s} update={p.update} colors={colors} artUrl={p.artworkUrl} onClose={p.onCloseMenu} />}
+      <Presence show={p.menuOpen}>
+        <VinylMenu settings={s} update={p.update} colors={colors} artUrl={p.artworkUrl} onClose={p.onCloseMenu} />
+      </Presence>
     </>
   );
 }
@@ -394,7 +397,7 @@ interface MenuProps {
 function VinylMenu({ settings: s, update, colors, artUrl, onClose }: MenuProps) {
   const thumbLabel = artUrl ? { backgroundImage: `url(${artUrl})` } : { background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})` };
   return (
-    <section className="vinyl-menu" role="dialog" aria-labelledby="vm-title">
+    <section className="vinyl-menu glass glass--thick" role="dialog" aria-labelledby="vm-title">
       <header>
         <h2 id="vm-title">自定义唱片</h2>
         <button className="ibtn" aria-label="关闭" onClick={onClose}>

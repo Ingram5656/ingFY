@@ -21,6 +21,7 @@ import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
 import { trackKey } from "../lib/types";
 import { SLEEP_FADE_MS, sleepLabel, useSleepTimer } from "../lib/sleep";
 import { MoreMenu } from "../components/MoreMenu";
+import { Presence } from "../components/Presence";
 import { LyricPicker } from "../components/LyricPicker";
 import { ShareSheet } from "../components/ShareSheet";
 import type { UpdateInfo } from "../components/SettingsPanel";
@@ -164,7 +165,8 @@ export default function FullScreen() {
   // 歌词 ⇄ 唱片：新旧两层同时淡入淡出，320ms 内完成
   const modeLayers = useCrossfade(settings.viewMode, 320);
   // 灯效切换：旧灯效收起、新灯效展开
-  const lightLayers = useCrossfade(settings.lightStyle, 420);
+  // 关掉拾音灯也走同一套：旧灯效收起淡出，而不是直接消失
+  const lightLayers = useCrossfade(settings.lightsOn ? settings.lightStyle : "off", 420);
   const modeSegRef = useRef<HTMLDivElement>(null);
   const lightSegRef = useRef<HTMLDivElement>(null);
   // 3 秒没动鼠标就收起上下栏，只留中间；开着面板或菜单时不收
@@ -368,17 +370,18 @@ export default function FullScreen() {
             />
             ) : (
               <>
-                {settings.lightsOn &&
-                  lightLayers.map((l) => (
+                {lightLayers
+                  .filter((l) => l.key !== "off")
+                  .map((l) => (
                     <div key={l.key} className={`light-layer${l.leaving ? " is-leaving" : " is-entering"}`}>
                       <div className="light-dim">
-                        <Lights palette={lightPalette(settings, palette)} style={l.key} playing={!!now?.playing} reactive={settings.beat} />
+                        <Lights palette={lightPalette(settings, palette)} style={l.key as LightStyle} playing={!!now?.playing} reactive={settings.beat} />
                       </div>
                     </div>
                   ))}
                 <section className={`fs-track${showAlbum ? "" : " is-hidden"}${layout === "album" ? " is-solo" : ""}`} aria-hidden={!showAlbum || undefined}>
-                  {artwork ? <img className="cover" src={artwork.dataUrl} alt="" /> : <div className="cover cover--empty" />}
-                  <FitText className="title" fitKey={now?.title ?? ""} minScale={0.7} wrap={false}>
+                  {artwork ? <img key={artwork.dataUrl.length + (now?.title ?? "")} className="cover cover-in" src={artwork.dataUrl} alt="" /> : <div className="cover cover--empty" />}
+                  <FitText key={now?.title ?? ""} className="title text-in" fitKey={now?.title ?? ""} minScale={0.7} wrap={false}>
                     {now?.title || "没有在播放"}
                   </FitText>
                   <p className="artist">{now?.artist || "在 Spotify 或其他播放器里放一首歌"}</p>
@@ -406,13 +409,15 @@ export default function FullScreen() {
           </div>
         ))}
 
-        {spotify.message && (
-          <div className={`toast glass${spotify.message.kind === "error" ? " toast--error" : ""}`} role="status">
-            {spotify.message.text}
-          </div>
-        )}
+        <Presence show={!!spotify.message}>
+          {spotify.message && (
+            <div className={`toast glass${spotify.message.kind === "error" ? " toast--error" : ""}`} role="status">
+              {spotify.message.text}
+            </div>
+          )}
+        </Presence>
 
-        {moreOpen && (
+        <Presence show={moreOpen}>
           <MoreMenu
             onClose={() => setMoreOpen(false)}
             offset={offset}
@@ -432,7 +437,7 @@ export default function FullScreen() {
             sleepLeft={sleepLabel(sleep.mode, sleep.left)}
             onSleep={sleep.start}
           />
-        )}
+        </Presence>
 
         {/* 右下角：播放列表（正在播放的专辑 / 歌单里的所有歌） */}
         <button
@@ -450,8 +455,9 @@ export default function FullScreen() {
             <path d="M18 9l3-1" />
           </svg>
         </button>
+        <Presence show={listOpen}>
         <NowListPanel
-          open={listOpen}
+          open
           onClose={() => setListOpen(false)}
           loggedIn={spotify.account.loggedIn}
           needsReauth={spotify.account.needsReauth}
@@ -459,6 +465,7 @@ export default function FullScreen() {
           trackKey={now ? `${now.title}|${now.artist}` : ""}
           currentTitle={now?.title ?? ""}
         />
+        </Presence>
 
         {/* 左下角：全屏（无边框铺满屏幕），Esc 退出 */}
         <button
@@ -516,7 +523,7 @@ export default function FullScreen() {
           </button>
         </footer>
 
-        {settingsOpen && (
+        <Presence show={settingsOpen} ms={260}>
           <SettingsPanel
             updateInfo={updateInfo}
             settings={settings}
@@ -530,9 +537,10 @@ export default function FullScreen() {
             onLogout={spotify.logout}
             onClose={() => setSettingsOpen(false)}
           />
-        )}
+        </Presence>
 
-        {pickerOpen && now && (
+        <Presence show={pickerOpen && !!now} ms={260}>
+          {now && (
           <LyricPicker
             now={now}
             current={pref}
@@ -542,8 +550,10 @@ export default function FullScreen() {
             }}
             onClose={() => setPickerOpen(false)}
           />
-        )}
-        {shareOpen && now && (
+          )}
+        </Presence>
+        <Presence show={shareOpen && !!now} ms={260}>
+          {now && (
           <ShareSheet
             now={now}
             lines={lines}
@@ -552,7 +562,8 @@ export default function FullScreen() {
             palette={palette}
             onClose={() => setShareOpen(false)}
           />
-        )}
+          )}
+        </Presence>
       </div>
     </div>
   );

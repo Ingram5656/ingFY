@@ -12,6 +12,7 @@ import {
   type WheelEvent,
 } from "react";
 import { formatTime } from "../lib/player";
+import { Presence } from "./Presence";
 import { invoke } from "@tauri-apps/api/core";
 import { PlayIcon } from "./Icons";
 
@@ -175,7 +176,7 @@ export function LibraryView(p: Props) {
 
   return (
     <>
-      {p.searchOpen && (
+      <Presence show={p.searchOpen}>
         <div className="lib-search glass" role="search">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
@@ -209,7 +210,7 @@ export function LibraryView(p: Props) {
             </svg>
           </button>
         </div>
-      )}
+      </Presence>
 
       {empty ? (
         <div className="lib-empty">
@@ -224,11 +225,13 @@ export function LibraryView(p: Props) {
         <Shelf key={`${p.kind}|${scope}|${q}`} items={shown} onPlay={play} onPlayTrack={playTrack} />
       )}
 
-      {toast && (
-        <div className={`toast glass${toast.kind === "error" ? " toast--error" : ""}`} role="status">
-          {toast.text}
-        </div>
-      )}
+      <Presence show={!!toast}>
+        {toast && (
+          <div className={`toast glass${toast.kind === "error" ? " toast--error" : ""}`} role="status">
+            {toast.text}
+          </div>
+        )}
+      </Presence>
     </>
   );
 }
@@ -442,9 +445,11 @@ function Shelf({
       </div>
     </div>
     {/* 曲目面板放在架子外面：架子有左右渐隐的遮罩，放里面毛玻璃会只模糊到架子里的东西 */}
-    {picked !== null && items[picked] && (
-      <ShelfTracks key={items[picked].uri} item={items[picked]} onPlayTrack={onPlayTrack} onClose={() => setPicked(null)} />
-    )}
+    <Presence show={picked !== null && !!items[picked]}>
+      {picked !== null && items[picked] && (
+        <ShelfTracks key={items[picked].uri} item={items[picked]} onPlayTrack={onPlayTrack} onClose={() => setPicked(null)} />
+      )}
+    </Presence>
     </>
   );
 }
@@ -558,7 +563,7 @@ function ShelfTracks({ item, onPlayTrack, onClose }: { item: ShelfItem; onPlayTr
 
   const noun = item.kind === "album" ? "专辑" : "歌单";
   return (
-    <section className="shelf-tracks glass" aria-label={`${item.name}的曲目`}>
+    <section className="shelf-tracks glass glass--thick" aria-label={`${item.name}的曲目`}>
       <header className="trk-head">
         <div>
           <small>{noun}曲目</small>

@@ -187,7 +187,7 @@ export function NowListPanel(p: Props) {
   }
 
   return (
-    <section className="nl-panel glass" role="dialog" aria-label="播放列表">
+    <section className="nl-panel glass glass--thick" role="dialog" aria-label="播放列表">
       <header className="nl-head">
         {data?.image ? (
           <img className="nl-cover" src={data.image} alt="" />

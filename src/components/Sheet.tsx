@@ -18,7 +18,7 @@ export function Sheet({ title, subtitle, wide, onClose, children }: Props) {
 
   return (
     <div className="sheet-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <section className={`sheet glass${wide ? " sheet--wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+      <section className={`sheet glass glass--thick${wide ? " sheet--wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <header className="sheet-head">
           <div>
             <strong>{title}</strong>

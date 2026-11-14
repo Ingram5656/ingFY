@@ -51,7 +51,7 @@ export function MoreMenu(p: Props) {
   const offsetText = p.offset === 0 ? "准时" : p.offset > 0 ? `提前 ${sec}s` : `推后 ${sec.slice(1)}s`;
 
   return (
-    <div className="more-menu glass" ref={ref} role="dialog" aria-label="更多">
+    <div className="more-menu glass glass--thick" ref={ref} role="dialog" aria-label="更多">
       <div className={`mm-row${p.canAdjust ? "" : " is-disabled"}`}>
         <span className="mm-label">
           歌词时间
