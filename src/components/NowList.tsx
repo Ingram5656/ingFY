@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { formatTime } from "../lib/player";
+import { LikedCover } from "./Shelf";
 
 interface ListTrack {
   uri: string;
@@ -10,7 +11,7 @@ interface ListTrack {
 }
 
 interface NowListData {
-  kind: "album" | "playlist" | "queue";
+  kind: "album" | "playlist" | "liked" | "queue";
   contextUri: string | null;
   title: string;
   subtitle: string;
@@ -118,7 +119,7 @@ export function NowListPanel(p: Props) {
     }
   };
 
-  const kindLabel = data?.kind === "album" ? "专辑" : data?.kind === "playlist" ? "歌单" : "队列";
+  const kindLabel = data?.kind === "album" ? "专辑" : data?.kind === "playlist" || data?.kind === "liked" ? "歌单" : "队列";
 
   let body;
   if (!p.loggedIn) {
@@ -188,14 +189,21 @@ export function NowListPanel(p: Props) {
   return (
     <section className="nl-panel glass" role="dialog" aria-label="播放列表">
       <header className="nl-head">
-        {data?.image ? <img className="nl-cover" src={data.image} alt="" /> : <span className="nl-cover nl-cover--empty" aria-hidden="true" />}
+        {data?.image ? (
+          <img className="nl-cover" src={data.image} alt="" />
+        ) : data?.kind === "liked" ? (
+          <span className="nl-cover">
+            <LikedCover />
+          </span>
+        ) : (
+          <span className="nl-cover nl-cover--empty" aria-hidden="true" />
+        )}
         <div className="nl-title">
           <small>{data ? `正在播放的${kindLabel}` : "播放列表"}</small>
           <strong>{data?.title || "播放列表"}</strong>
           {data && (
             <span>
-              {data.subtitle ? `${data.subtitle}，` : ""}
-              {tracks.length} 首
+              {data.kind === "liked" && data.subtitle ? data.subtitle : `${data.subtitle ? `${data.subtitle}，` : ""}${tracks.length} 首`}
             </span>
           )}
         </div>

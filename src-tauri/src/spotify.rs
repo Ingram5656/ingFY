@@ -472,9 +472,30 @@ pub async fn saved_albums(access: &str) -> Result<Vec<ShelfItem>, String> {
     Ok(out)
 }
 
-/// 自己创建和关注的歌单（最多 300 个）
+/// "已点赞的歌曲"：在接口里不是歌单，而是单独的收藏夹。
+/// 播放时用 spotify:user:<用户 id>:collection 作为 context。
+async fn liked_songs_item(access: &str) -> Result<ShelfItem, String> {
+    let me = get_json("https://api.spotify.com/v1/me", &[], access, "读取账号").await?;
+    let id = me.get("id").and_then(|x| x.as_str()).ok_or("读取账号失败")?.to_string();
+    let total = get_json("https://api.spotify.com/v1/me/tracks", &[("limit", "1".into())], access, "读取已点赞的歌曲")
+        .await
+        .ok()
+        .and_then(|v| v.get("total").and_then(|t| t.as_i64()));
+    Ok(ShelfItem {
+        uri: format!("spotify:user:{id}:collection"),
+        name: "已点赞的歌曲".into(),
+        subtitle: total.map(|n| format!("{n} 首")).unwrap_or_default(),
+        image: None,
+        kind: "liked".into(),
+    })
+}
+
+/// 自己创建和关注的歌单（最多 300 个），最前面固定放"已点赞的歌曲"
 pub async fn my_playlists(access: &str) -> Result<Vec<ShelfItem>, String> {
     let mut out = Vec::new();
+    if let Ok(liked) = liked_songs_item(access).await {
+        out.push(liked);
+    }
     for page in 0..6 {
         let v = get_json(
             "https://api.spotify.com/v1/me/playlists",
@@ -594,7 +615,7 @@ pub struct ListTrack {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NowList {
-    /// "album" / "playlist" / "queue"（不是从专辑或歌单播放时，显示接下来的播放队列）
+    /// "album" / "playlist" / "liked"（已点赞的歌曲）/ "queue"（其他情况，显示接下来的播放队列）
     pub kind: String,
     /// 点某首歌时要带上的专辑 / 歌单 URI；播放队列为空
     pub context_uri: Option<String>,
@@ -660,6 +681,15 @@ pub async fn now_list(access: &str) -> Result<Option<NowList>, String> {
 
     let mut note = None;
     if let Some(ctx) = context_uri.as_deref() {
+        if ctx.ends_with(":collection") {
+            match liked_list(access, ctx).await {
+                Ok(mut l) => {
+                    l.current_uri = current_uri;
+                    return Ok(Some(l));
+                }
+                Err(e) => note = Some(e),
+            }
+        }
         match split_uri(ctx) {
             Some(("album", id)) => match album_list(access, id, ctx).await {
                 Ok(mut l) => {
@@ -755,6 +785,38 @@ async fn playlist_list(access: &str, id: &str, ctx: &str) -> Result<NowList, Str
         title: item.as_ref().map(|i| i.name.clone()).unwrap_or_default(),
         subtitle: item.as_ref().map(|i| i.subtitle.clone()).unwrap_or_default(),
         image: item.and_then(|i| i.image),
+        tracks,
+        current_uri: None,
+        note: None,
+    })
+}
+
+/// 已点赞的歌曲（按点赞时间从新到旧，最多 500 首）
+async fn liked_list(access: &str, ctx: &str) -> Result<NowList, String> {
+    let mut tracks = Vec::new();
+    let mut total = 0;
+    for page in 0..10 {
+        let v = get_json(
+            "https://api.spotify.com/v1/me/tracks",
+            &[("limit", "50".into()), ("offset", (page * 50).to_string())],
+            access,
+            "读取已点赞的歌曲",
+        )
+        .await?;
+        total = v.get("total").and_then(|t| t.as_i64()).unwrap_or(0);
+        let items = v.get("items").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+        tracks.extend(items.iter().filter_map(|it| it.get("track").or_else(|| it.get("item")).and_then(list_track)));
+        if v.get("next").map_or(true, |n| n.is_null()) {
+            break;
+        }
+    }
+    let shown = tracks.len() as i64;
+    Ok(NowList {
+        kind: "liked".into(),
+        context_uri: Some(ctx.to_string()),
+        title: "已点赞的歌曲".into(),
+        subtitle: if total > shown { format!("共 {total} 首，这里列出最近的 {shown} 首") } else { String::new() },
+        image: None,
         tracks,
         current_uri: None,
         note: None,

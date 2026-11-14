@@ -631,3 +631,10 @@ html.calm .light, html.calm .dl-glow span { animation-name: breathe !important; 
 .nl-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 0 24px; text-align: center; }
 .nl-empty p { margin: 0; font-size: 15px; line-height: 1.5; color: rgba(255,255,255,0.8); }
 @media (prefers-reduced-motion: reduce) { .nl-panel { animation: none; } .nl-eq i { animation: none; } }
+
+/* "已点赞的歌曲"封面：和 Spotify 里一样的紫蓝渐变 + 白色爱心 */
+.liked-cover { position: absolute; inset: 0; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #4a17d9 0%, #6c4ef0 45%, #9fd9d2 100%); }
+.liked-cover svg { width: 38%; height: 38%; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.25)); }
+.nl-cover .liked-cover { border-radius: 10px; overflow: hidden; }
+span.nl-cover { position: relative; overflow: hidden; display: block; }

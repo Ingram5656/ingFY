@@ -10,7 +10,8 @@ export interface ShelfItem {
   /** 专辑是歌手，歌单是创建者 */
   subtitle: string;
   image: string | null;
-  kind: ShelfKind;
+  /** liked 是"已点赞的歌曲"，没有封面图，用紫色爱心封面 */
+  kind: ShelfKind | "liked";
 }
 
 interface Props {
@@ -359,7 +360,8 @@ interface RecordProps {
 }
 
 const Record = memo(function Record({ id, item, d, picked, pickedSide, onPlay }: RecordProps) {
-  const spine = useSpineColor(item.image);
+  const spineFromCover = useSpineColor(item.image);
+  const spine = item.kind === "liked" ? { bg: "#4a2fd0", ink: "#ffffff" } : spineFromCover;
   const ad = Math.abs(d);
   // 竖着插在架子上：正中间侧面朝前（只看到书脊），往两边逐渐转开、露出封面。
   // 角度随位置连续变化（左边 66°~90°，右边 90°~114°），翻动时只是轻轻偏一点，
@@ -387,7 +389,7 @@ const Record = memo(function Record({ id, item, d, picked, pickedSide, onPlay }:
       aria-label={title}
     >
       <div className="rec-face rec-front">
-        {item.image ? <img src={item.image} alt="" draggable={false} /> : <span className="rec-noimg">{item.name.slice(0, 2)}</span>}
+        <Cover item={item} />
         {picked && (
           <div className="rec-info">
             <div>
@@ -407,12 +409,31 @@ const Record = memo(function Record({ id, item, d, picked, pickedSide, onPlay }:
           </div>
         )}
       </div>
-      <div className="rec-face rec-back">{item.image && <img src={item.image} alt="" draggable={false} />}</div>
+      <div className="rec-face rec-back">
+        <Cover item={item} />
+      </div>
       <Spine side="l" name={item.name} sub={item.subtitle} />
       <Spine side="r" name={item.name} sub={item.subtitle} />
     </div>
   );
 });
+
+function Cover({ item }: { item: ShelfItem }) {
+  if (item.image) return <img src={item.image} alt="" draggable={false} />;
+  if (item.kind === "liked") return <LikedCover />;
+  return <span className="rec-noimg">{item.name.slice(0, 2)}</span>;
+}
+
+/** "已点赞的歌曲"的封面：紫蓝渐变上一颗白色爱心 */
+export function LikedCover() {
+  return (
+    <span className="liked-cover" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 20.6l-1.3-1.2C5.6 14.8 2.5 12 2.5 8.4 2.5 5.6 4.7 3.4 7.5 3.4c1.6 0 3.2.8 4.5 2 1.3-1.2 2.9-2 4.5-2 2.8 0 5 2.2 5 5 0 3.6-3.1 6.4-8.2 11l-1.3 1.2z" />
+      </svg>
+    </span>
+  );
+}
 
 function Spine({ side, name, sub }: { side: "l" | "r"; name: string; sub: string }) {
   return (
