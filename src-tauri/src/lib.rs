@@ -143,7 +143,14 @@ fn island_layout(app: AppHandle, width: f64, height: f64) -> Result<(), String> 
         let cx = pos.x + size.width as i32 / 2;
         win.set_position(PhysicalPosition::new(cx - w as i32 / 2, pos.y)).map_err(|e| e.to_string())?;
     }
-    win.set_size(PhysicalSize::new(w, h)).map_err(|e| e.to_string())
+    win.set_size(PhysicalSize::new(w, h)).map_err(|e| e.to_string())?;
+    // 有的系统上"不可调整大小"的窗口改不了尺寸：临时打开再改一次，改完关回去
+    if win.outer_size().map_or(false, |s| s.width != w || s.height != h) {
+        let _ = win.set_resizable(true);
+        let _ = win.set_size(PhysicalSize::new(w, h));
+        let _ = win.set_resizable(false);
+    }
+    Ok(())
 }
 
 #[tauri::command]

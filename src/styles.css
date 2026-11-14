@@ -953,14 +953,14 @@ span.nl-cover { position: relative; overflow: hidden; display: block; }
 html[data-window="island"], html[data-window="island"] body { background: transparent; }
 .isl-root { --u: calc(var(--s, 1) * 1px); --isl-ease: cubic-bezier(0.32, 1.28, 0.5, 1);
   height: 100%; display: flex; justify-content: center; align-items: flex-start; }
-.isl { position: relative; flex: none; width: calc(380 * var(--u)); height: calc(46 * var(--u));
+.isl { position: relative; flex: none; width: min(calc(380 * var(--u)), calc(100vw - 28px)); height: calc(46 * var(--u));
   border-radius: calc(23 * var(--u)); overflow: hidden; background: #000; color: #fff; cursor: default;
   box-shadow: 0 calc(6 * var(--u)) calc(14 * var(--u)) rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.09);
   transition: width 0.42s var(--isl-ease), height 0.42s var(--isl-ease), border-radius 0.42s var(--isl-ease),
     opacity 0.22s ease, transform 0.3s var(--ease-apple), box-shadow 0.3s ease; }
 /* 贴在屏幕顶边：上面两个角是直的，像从屏幕边缘垂下来的刘海 */
 .is-docked .isl { border-radius: 0 0 calc(23 * var(--u)) calc(23 * var(--u)); box-shadow: 0 calc(6 * var(--u)) calc(14 * var(--u)) rgba(0,0,0,0.35); }
-.is-open .isl { width: calc(420 * var(--u)); height: calc(172 * var(--u)); border-radius: calc(36 * var(--u)); }
+.is-open .isl { width: min(calc(420 * var(--u)), calc(100vw - 28px)); height: min(calc(172 * var(--u)), calc(100vh - 18px)); border-radius: calc(36 * var(--u)); }
 .is-docked.is-open .isl { border-radius: 0 0 calc(36 * var(--u)) calc(36 * var(--u)); }
 .isl-root:not(.is-locked) .isl:active:not(:has(button:active, .seek:active)) { transform: scale(0.985); }
 /* 锁定后鼠标移上去：整个岛隐身，不挡下面的东西 */
