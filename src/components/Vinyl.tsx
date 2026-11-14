@@ -497,15 +497,6 @@ export function VinylEditor({
             ))}
           </div>
         )}
-        <p className="st-note">
-          {v.label === "lyric"
-            ? t("歌词标签不跟着转，方便边听边看")
-            : v.label === "solid"
-              ? lyricLabel
-                ? t("纯色标签上印歌名和歌手")
-                : t("标签用一种纯色")
-              : t("标签用当前歌曲的专辑封面")}
-        </p>
       </div>
 
       <div className="vm-block">
@@ -528,7 +519,6 @@ export function VinylEditor({
             </button>
           ))}
         </div>
-        <p className="st-note">{v.look === "random" ? t("每次切歌随机换一种外观，斑点位置也每次不同") : t("斑点位置每首歌都不一样")}</p>
       </div>
 
       <div className="vm-block">
@@ -570,7 +560,6 @@ export function VinylEditor({
             </div>
           </>
         )}
-        <p className="st-note">{v.colorMode === "album" ? t("唱片颜色跟着专辑封面变，换歌自动换色") : t("所有唱片都用这两种颜色，墨水飞溅里还会加一点墨黑")}</p>
       </div>
     </>
   );

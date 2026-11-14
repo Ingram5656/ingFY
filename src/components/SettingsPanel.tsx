@@ -107,7 +107,7 @@ function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | 
           </div>
         </div>
       </Group>
-      <Group foot={t("关闭主窗口后 ingfy 会留在右下角托盘里，桌面歌词和快捷键继续工作；从托盘菜单退出。")}>
+      <Group>
         <Toggle
           label={t("开机自动启动")}
           sub={t("开机后只显示桌面歌词，主窗口留在托盘")}
@@ -116,7 +116,7 @@ function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | 
           onChange={() => void toggleAutostart()}
         />
       </Group>
-      <Group title={t("快捷键")} foot={t("在任何程序里都能用。被别的程序占用的组合会自动跳过。")}>
+      <Group title={t("快捷键")}>
         {SHORTCUTS.map(([k, v]) => (
           <div className="st-cell st-key" key={k}>
             <span>{v}</span>
@@ -436,7 +436,7 @@ export function SettingsPanel(p: Props) {
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
           </div>
         </Group>
-        <Group foot={t("背景越暗，歌词越清楚。")}>
+        <Group>
           <div className="st-cell">
             <Slider label={t("背景模糊")} value={s.bgBlur} display={`${s.bgBlur}`} onChange={(v) => update({ bgBlur: v })} />
           </div>
@@ -448,7 +448,7 @@ export function SettingsPanel(p: Props) {
     ),
     lyrics: (
       <>
-        <Group title={t("唱到的字的颜色")} foot={t("全屏歌词和桌面歌词一起生效。")}>
+        <Group title={t("唱到的字的颜色")}>
           <button className="st-cell st-choice" role="radio" aria-checked={s.lyricColorMode === "album"} onClick={() => update({ lyricColorMode: "album" })}>
             <span className="st-dot" style={{ background: `linear-gradient(135deg, ${p.palette[0]}, ${p.palette[p.palette.length - 1]})` }} />
             <span className="st-option-text">
@@ -472,9 +472,7 @@ export function SettingsPanel(p: Props) {
               <button className="st-link" onClick={() => update({ lyricSize: 50, desktopLyricSize: 50 })}>
                 {t("恢复默认字号")}
               </button>
-            ) : (
-              t("放不下一行的句子会自动缩小。")
-            )
+            ) : undefined
           }
         >
           <div className="st-cell">
@@ -515,9 +513,7 @@ export function SettingsPanel(p: Props) {
               <button className="st-link" onClick={() => update({ lightThickness: 50, lightSensitivity: 50, lightResponse: 50 })}>
                 {t("恢复默认")}
               </button>
-            ) : (
-              t("全屏、桌面歌词和灵动岛的拾音灯一起生效。")
-            )
+            ) : undefined
           }
         >
           <div className="st-cell">
@@ -528,11 +524,9 @@ export function SettingsPanel(p: Props) {
           </div>
           <div className="st-cell">
             <Slider label={t("灵敏度")} value={s.lightSensitivity} display={levelWord(s.lightSensitivity)} onChange={(v) => update({ lightSensitivity: v })} />
-            <p className="st-note">{t("越高，小声的地方灯也跳得越高；越低，只有响的地方才跳满。")}</p>
           </div>
           <div className="st-cell">
             <Slider label={t("反应速度")} value={s.lightResponse} display={levelWord(s.lightResponse)} onChange={(v) => update({ lightResponse: v })} />
-            <p className="st-note">{t("越快，灯起落越利落；越慢，起落越柔和、拖尾越长。")}</p>
           </div>
         </Group>
         <Group>
@@ -543,7 +537,7 @@ export function SettingsPanel(p: Props) {
             <Slider label={t("色彩鲜艳度")} value={s.vividness} display={`${s.vividness}`} onChange={(v) => update({ vividness: v })} />
           </div>
         </Group>
-        <Group title={t("颜色")} foot={s.lightColorMode === "album" ? t("换歌时自动取当前专辑封面的颜色。") : undefined}>
+        <Group title={t("颜色")}>
           <div className="st-cell">
             <div className="st-seg" role="radiogroup" aria-label={t("拾音灯颜色来源")}>
               {(
@@ -596,15 +590,7 @@ export function SettingsPanel(p: Props) {
     ),
     spotify: (
       <>
-        <Group
-          foot={
-            p.account.expired
-              ? t("Spotify 对开发模式应用的登录最长保留半年，或者你在 Spotify 账号里撤销了授权。重新连接一次就好。")
-              : p.account.loggedIn
-                ? t("连接后可以收藏歌曲、浏览曲库和专辑、查看播放列表；从专辑或歌单开始播放需要 Premium。")
-                : t("歌词、拾音灯、桌面歌词不需要连接 Spotify，任何播放器都能用。")
-          }
-        >
+        <Group>
           <div className="st-cell st-account">
             <span className="st-spotify" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0E2A17" strokeWidth="2.2" strokeLinecap="round">
@@ -709,18 +695,11 @@ function IslandSection({
   const customColor = s.islandLyricColorMode === "custom";
   return (
     <>
-      <Group foot={t("灵动岛默认贴在屏幕顶部正中。托盘菜单里也可以显示或隐藏。")}>
+      <Group>
         <Toggle label={t("显示灵动岛")} sub={t("在屏幕顶部显示正在唱的歌词")} on={s.islandOn} onChange={(on) => update({ islandOn: on })} />
       </Group>
 
-      <Group
-        title={t("模式")}
-        foot={
-          s.islandLocked
-            ? t("锁定：鼠标可以穿过灵动岛点到下面的东西，移上去时它会自动隐身。")
-            : t("不锁定：单击展开，出现进度条和播放按钮；按住可以拖到别处。贴着屏幕顶边是刘海形状，离开顶边变成圆角胶囊。")
-        }
-      >
+      <Group title={t("模式")}>
         <div className="st-cell">
           <div className="st-seg" role="radiogroup" aria-label={t("模式")}>
             {(
@@ -771,7 +750,7 @@ function IslandSection({
         )}
       </Group>
 
-      <Group title={t("背景拾音灯")} foot={t("灯光的亮度、颜色和跟着节拍闪烁，和全屏的拾音灯设置一样。")}>
+      <Group title={t("背景拾音灯")}>
         <Toggle label={t("拾音灯")} sub={t("关掉后背景是纯黑")} on={s.islandLightsOn} onChange={(on) => update({ islandLightsOn: on })} />
         <div className={`st-cell${s.islandLightsOn ? "" : " is-disabled"}`}>
           <div className="st-fx" role="radiogroup" aria-label={t("灯效样式")}>
@@ -794,7 +773,7 @@ function IslandSection({
         </div>
       </Group>
 
-      <Group title={t("字幕颜色")} foot={t("歌词在灵动岛上一直显示，不能关闭。")}>
+      <Group title={t("字幕颜色")}>
         <button className="st-cell st-choice" role="radio" aria-checked={!customColor} onClick={() => update({ islandLyricColorMode: "album" })}>
           <span className="st-dot" style={{ background: `linear-gradient(135deg, ${palette[0]}, ${palette[palette.length - 1]})` }} />
           <span className="st-option-text">
@@ -897,11 +876,7 @@ function ClientSection() {
     <Group
       title={t("登录方式")}
       foot={
-        msg ? (
-          <span className={msg.error ? "st-warn" : undefined}>{msg.text}</span>
-        ) : (
-          t("ingfy 自带的应用处于 Spotify 的开发模式，只有被加进用户名单的账号能登录（最多 5 人）。用自己的应用不占名额，但需要你有 Spotify Premium。换应用后需要重新连接。")
-        )
+        msg ? <span className={msg.error ? "st-warn" : undefined}>{msg.text}</span> : undefined
       }
     >
       <Toggle label={t("使用自己的 Client ID")} sub={saved ? t("正在使用你自己的 Spotify 应用") : t("现在用的是 ingfy 自带的应用")} on={own} onChange={toggle} />
