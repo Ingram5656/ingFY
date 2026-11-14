@@ -5,6 +5,7 @@
 //! - 分析：每秒约 40 次，取最近 2048 个采样，加汉宁窗做 FFT，
 //!   按对数频率分成 64 段（40Hz~16kHz），换算成分贝后做自动增益和起落平滑。
 //! - 推送：事件 "audio-levels"，内容是 64 个 0~255 的整数。
+//! - 主窗口和桌面歌词都藏起来（缩到托盘）时不做 FFT、不推送，只留采集，省 CPU。
 //! - 换了输出设备（比如插上耳机）或设备出错时会自动重连。
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -13,7 +14,7 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub const BANDS: usize = 64;
 const FFT_SIZE: usize = 2048;
@@ -147,9 +148,27 @@ fn analyze_loop(app: AppHandle, shared: Arc<Mutex<Shared>>) {
     let mut smooth = [0.0f32; BANDS];
     let mut peak = 0.35f32;
     let mut last_sent = [0u8; BANDS];
+    let mut any_visible = true;
+    let mut last_vis_check: Option<Instant> = None;
 
     loop {
         let started = Instant::now();
+
+        // 每半秒看一次有没有窗口在显示；都藏起来了就歇着，不做 FFT 也不往网页里推数据
+        if last_vis_check.map_or(true, |t| t.elapsed() >= Duration::from_millis(500)) {
+            last_vis_check = Some(Instant::now());
+            any_visible = app
+                .webview_windows()
+                .values()
+                .any(|w| w.is_visible().unwrap_or(true) && !w.is_minimized().unwrap_or(false));
+        }
+        if !any_visible {
+            smooth = [0.0; BANDS];
+            // 下次显示时先推一帧，免得灯停在藏起来之前的高度
+            last_sent = [255u8; BANDS];
+            std::thread::sleep(Duration::from_millis(200));
+            continue;
+        }
         let (samples, sample_rate, stale) = {
             let s = shared.lock().unwrap();
             let n = s.samples.len();

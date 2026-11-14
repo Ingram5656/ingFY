@@ -40,7 +40,12 @@ export function usePosition(now: NowPlaying | null): number {
 
   useEffect(() => {
     let raf = 0;
-    const tick = () => {
+    let last = 0;
+    const tick = (ts: number) => {
+      raf = requestAnimationFrame(tick);
+      // 高刷屏上 rAF 一秒一两百次，进度最多更新 60 次就够顺滑，省下一半以上的重绘
+      if (ts - last < 15) return;
+      last = ts;
       const n = nowRef.current;
       if (n) {
         const sane = Math.abs(Date.now() - n.updatedAtMs) < 24 * 3600_000;
@@ -51,7 +56,6 @@ export function usePosition(now: NowPlaying | null): number {
       } else {
         setPos(0);
       }
-      raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -65,6 +69,15 @@ export type LyricsState =
   | { status: "ready"; lines: LyricLine[]; synced: boolean; source: string; wordSync?: boolean; translated?: boolean };
 
 const lyricsCache = new Map<string, LyricsState>();
+/** 最多记住最近 80 首的歌词，开着几天也不会越攒越多 */
+const LYRICS_CACHE_MAX = 80;
+
+/** 带上限的 Map 写入：超出上限时丢掉最早放进去的 */
+export function remember<K, V>(map: Map<K, V>, key: K, value: V, max: number) {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > max) map.delete(map.keys().next().value as K);
+}
 
 /** 把后端返回的歌词整理成行：逐字（YRC）优先，其次逐行 LRC，最后纯文本；去掉作词作曲信息、挂上翻译 */
 function buildLyrics(r: LyricsResult | null): LyricsState {
@@ -117,7 +130,7 @@ export function useLyrics(now: NowPlaying | null, choice?: { source?: string; id
       .then((r) => {
         let next: LyricsState;
         next = buildLyrics(r);
-        lyricsCache.set(key, next);
+        remember(lyricsCache, key, next, LYRICS_CACHE_MAX);
         if (alive) setState(next);
       })
       .catch(() => alive && setState({ status: "error", lines: [], synced: false }));

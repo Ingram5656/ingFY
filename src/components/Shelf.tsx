@@ -11,7 +11,7 @@ import {
   type PointerEvent,
   type WheelEvent,
 } from "react";
-import { formatTime } from "../lib/player";
+import { formatTime, remember } from "../lib/player";
 import { Presence } from "./Presence";
 import { invoke } from "@tauri-apps/api/core";
 import { PlayIcon } from "./Icons";
@@ -552,7 +552,7 @@ function ShelfTracks({ item, onPlayTrack, onClose }: { item: ShelfItem; onPlayTr
     let alive = true;
     invoke<ContextList>("spotify_context_tracks", { uri: item.uri })
       .then((d) => {
-        tracksCache.set(item.uri, d);
+        remember(tracksCache, item.uri, d, 40);
         if (alive) setData(d);
       })
       .catch((e) => alive && setError(tMsg(String(e))));
@@ -674,10 +674,10 @@ function useSpineColor(url: string | null) {
         b = Math.round(b / k);
         const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         const v = { bg: `rgb(${r}, ${g}, ${b})`, ink: lum > 150 ? "#1d1d1f" : "#ffffff" };
-        spineCache.set(url, v);
+        remember(spineCache, url, v, 400);
         if (alive) setC(v);
       } catch {
-        spineCache.set(url, DEFAULT_SPINE);
+        remember(spineCache, url, DEFAULT_SPINE, 400);
       }
     };
     img.src = url;
