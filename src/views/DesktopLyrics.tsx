@@ -5,6 +5,8 @@ import { Karaoke } from "../components/Karaoke";
 import { FitText } from "../components/FitText";
 import { HeartIcon, LockIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from "../components/Icons";
 import { findLineIndex, lineProgress } from "../lib/lrc";
+import { useLyricPref } from "../lib/lyricPrefs";
+import { trackKey } from "../lib/types";
 import { mediaControl, useAlbumPalette, useLyrics, usePlayer, usePosition } from "../lib/player";
 import { pickGradient } from "../lib/palette";
 import { lightPalette, useApplySettings, useSettings } from "../lib/settings";
@@ -18,7 +20,10 @@ import { useSpotify } from "../lib/spotify";
 export default function DesktopLyrics() {
   const { now, artwork, desktopLocked } = usePlayer();
   const position = usePosition(now);
-  const lyrics = useLyrics(now);
+  const pref = useLyricPref(now?.title ? trackKey(now) : "");
+  const lyrics = useLyrics(now, pref);
+  // 每首歌单独的时间微调：正数让歌词提前
+  const lyricPos = position + (pref.offset ?? 0);
   const palette = useAlbumPalette(artwork);
   const [settings] = useSettings();
   useApplySettings(settings);
@@ -48,8 +53,8 @@ export default function DesktopLyrics() {
   }, [settings.beat]);
 
   const lines = lyrics.lines;
-  const idx = lyrics.synced ? findLineIndex(lines, position) : -1;
-  const progress = lyrics.synced ? lineProgress(lines, idx, position, now?.durationMs ?? 0) : 0;
+  const idx = lyrics.synced ? findLineIndex(lines, lyricPos) : -1;
+  const progress = lyrics.synced ? lineProgress(lines, idx, lyricPos, now?.durationMs ?? 0) : 0;
 
   let top = "";
   let bottom = "";

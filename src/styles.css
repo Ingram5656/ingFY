@@ -695,3 +695,93 @@ span.nl-cover { position: relative; overflow: hidden; display: block; }
 .fs-lyrics.is-solo .hint { left: 0; right: 0; text-align: center; }
 .fs-lyrics.is-solo .plain { text-align: center; }
 @media (prefers-reduced-motion: reduce) { .fs-track, .fs-lyrics { transition-duration: 0.01s; } }
+
+
+/* ===================== 设置：通用 ===================== */
+.st-keys { margin: 4px 0 0; display: grid; gap: 8px; }
+.st-keys div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-keys dt { display: flex; gap: 4px; }
+.st-keys dd { margin: 0; font-size: 13px; color: rgba(255,255,255,0.7); }
+.st-keys kbd { min-width: 22px; height: 24px; padding: 0 7px; box-sizing: border-box; display: inline-grid; place-items: center; border-radius: 7px;
+  font: 600 12px/1 inherit; color: #fff; background: rgba(255,255,255,0.14); box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 1px 2px rgba(0,0,0,0.2); }
+.st-update { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; font-size: 14px; color: rgba(255,255,255,0.8); }
+.st-new { margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-style: normal; font-size: 12px; background: #fff; color: var(--ink); }
+
+/* ===================== 更多菜单 ===================== */
+.ibtn { position: relative; }
+.ibtn.has-dot::after, .ibtn.has-badge::after { content: ""; position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%;
+  background: #ff5a5f; box-shadow: 0 0 0 2px rgba(0,0,0,0.15); }
+.ibtn.has-badge::after { background: var(--lyric-sung, #fff); }
+.more-menu { position: absolute; z-index: 5; right: 48px; top: 112px; width: 340px; box-sizing: border-box; padding: 10px; border-radius: 26px;
+  display: flex; flex-direction: column; gap: 2px; transform-origin: 92% 0%; animation: mm-in 0.36s var(--ease-apple) both; }
+@keyframes mm-in { from { opacity: 0; transform: scale(0.9) translateY(-6px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+.mm-row, .mm-block { padding: 10px 12px; border-radius: 16px; }
+.mm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mm-row.is-disabled { opacity: 0.55; }
+.mm-label { display: flex; flex-direction: column; gap: 2px; font-size: 15px; font-weight: 600; }
+.mm-label small { font-size: 12.5px; font-weight: 400; color: rgba(255,255,255,0.62); }
+.mm-stepper { display: flex; align-items: center; padding: 3px; gap: 2px; border-radius: 999px; background: rgba(0,0,0,0.18); }
+.mm-stepper button { min-width: 34px; height: 32px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: #fff; font: inherit;
+  font-size: 17px; cursor: pointer; transition: background-color 0.2s ease, transform 0.15s var(--ease-apple); }
+.mm-stepper button:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
+.mm-stepper button:active:not(:disabled) { transform: scale(0.9); }
+.mm-stepper button:disabled { opacity: 0.4; cursor: default; }
+.mm-stepper .mm-reset { min-width: 48px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.mm-link { display: flex; align-items: center; justify-content: space-between; height: 46px; padding: 0 12px; border: 0; border-radius: 16px;
+  background: transparent; color: #fff; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; transition: background-color 0.2s ease; }
+.mm-link:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+.mm-link:disabled { opacity: 0.45; cursor: default; }
+.mm-link svg { opacity: 0.6; }
+.mm-sep { height: 1px; margin: 6px 12px; background: rgba(255,255,255,0.14); }
+.mm-chips { display: flex; gap: 4px; margin-top: 10px; padding: 3px; border-radius: 999px; background: rgba(0,0,0,0.18); }
+.mm-chips button { flex: 1; height: 32px; border: 0; border-radius: 999px; background: transparent; color: rgba(255,255,255,0.85); font: inherit; font-size: 13px;
+  cursor: pointer; white-space: nowrap; transition: background-color 0.25s var(--ease-apple), color 0.25s ease; }
+.mm-chips button.is-on { background: #fff; color: var(--ink); }
+.more-menu button:focus-visible { outline: 2px solid rgba(255,255,255,0.8); outline-offset: 1px; }
+
+/* 睡眠定时最后 20 秒：拾音灯和歌词慢慢暗下去 */
+.light-dim { position: absolute; inset: 0; transition: opacity 0.6s ease; }
+.fs-lyrics .scroller { transition: opacity 0.6s ease; }
+.fs.is-sleeping .light-dim { opacity: 0.08; transition: opacity 20s linear; }
+.fs.is-sleeping .fs-lyrics .scroller { opacity: 0.35; transition: opacity 20s linear; }
+
+/* ===================== 居中弹出面板（换歌词、分享） ===================== */
+.sheet-backdrop { position: absolute; z-index: 20; inset: -50vmax; display: grid; place-items: center; background: rgba(8,4,24,0.38);
+  backdrop-filter: blur(10px); animation: sheet-fade 0.3s ease both; }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+.sheet { width: 560px; max-height: 680px; box-sizing: border-box; display: flex; flex-direction: column; padding: 20px 12px 12px 20px; border-radius: 30px;
+  animation: sheet-in 0.45s var(--ease-apple) both; }
+.sheet--wide { width: 980px; }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(18px) scale(0.95); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
+.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 0 8px 14px 0; border-bottom: 1px solid rgba(255,255,255,0.14); }
+.sheet-head div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sheet-head strong { font-size: 22px; font-weight: 900; }
+.sheet-head span { font-size: 13px; color: rgba(255,255,255,0.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 换歌词 */
+.picker-list { max-height: 560px; }
+.picker-list .nl-hint { list-style: none; margin: 24px 0; }
+.picker-src { flex: none; min-width: 52px; height: 22px; padding: 0 8px; box-sizing: border-box; display: inline-grid; place-items: center; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.85); }
+.picker-src--netease { background: rgba(236,65,65,0.28); }
+.picker-diff { margin-left: 6px; font-size: 11px; color: rgba(255,255,255,0.45); }
+.picker-check { flex: none; color: var(--lyric-sung, #fff); }
+
+/* 分享 */
+.share { display: flex; gap: 24px; padding-top: 16px; min-height: 0; }
+.share-preview { flex: none; width: 400px; height: 500px; border-radius: 22px; overflow: hidden; background: rgba(0,0,0,0.2);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35); }
+.share-preview img { width: 100%; height: 100%; display: block; animation: sheet-fade 0.35s ease both; }
+.share-loading { display: block; width: 100%; height: 100%; animation: trk-pulse 1.2s ease-in-out infinite; background: rgba(255,255,255,0.08); }
+.share-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding-right: 8px; }
+.share-lines { flex: 1; max-height: 410px; margin: 0; }
+.share-line { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 0; border-radius: 12px; background: transparent;
+  color: rgba(255,255,255,0.78); font: inherit; font-size: 15px; text-align: left; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease; }
+.share-line:hover { background: rgba(255,255,255,0.08); }
+.share-line.is-on { color: #fff; font-weight: 700; background: rgba(255,255,255,0.14); }
+.share-tick { flex: none; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.5); transition: all 0.25s var(--ease-apple); }
+.share-line.is-on .share-tick { background: #fff; box-shadow: inset 0 0 0 6px var(--c1, #6F48C6); }
+.share-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.share-msg { margin: 0; font-size: 13px; color: rgba(255,255,255,0.75); text-align: right; }
+.share-msg .st-link { margin-left: 8px; font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .more-menu, .sheet, .sheet-backdrop { animation: none; } }

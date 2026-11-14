@@ -1,4 +1,5 @@
-import { useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { Settings, BackgroundKind } from "../lib/settings";
 import { downscaleImage, saveBackgroundImage } from "../lib/settings";
 import type { LightStyle } from "./Lights";
@@ -18,6 +19,119 @@ interface Props {
   onLogin: () => void;
   onLogout: () => void;
   onClose: () => void;
+  /** 启动时查到的更新信息，没查到为 null */
+  updateInfo?: UpdateInfo | null;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  hasUpdate: boolean;
+  installerUrl: string | null;
+  pageUrl: string | null;
+  notes: string;
+}
+
+const SHORTCUTS: [string, string][] = [
+  ["Ctrl Alt L", "显示 / 隐藏桌面歌词"],
+  ["Ctrl Alt P", "播放 / 暂停"],
+  ["Ctrl Alt ← →", "上一首 / 下一首"],
+  ["Ctrl Alt K", "收藏当前歌曲"],
+];
+
+/** 通用：开机自启、快捷键、版本与更新 */
+function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
+  const [autostart, setAutostart] = useState<boolean | null>(null);
+  const [info, setInfo] = useState<UpdateInfo | null>(initial ?? null);
+  const [state, setState] = useState<"idle" | "checking" | "installing">("idle");
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    invoke<boolean>("autostart_enabled").then(setAutostart).catch(() => setAutostart(false));
+  }, []);
+
+  const toggleAutostart = async () => {
+    try {
+      setAutostart(await invoke<boolean>("set_autostart", { enabled: !autostart }));
+    } catch (e) {
+      setMsg(String(e));
+    }
+  };
+  const check = async () => {
+    setState("checking");
+    setMsg("");
+    try {
+      const r = await invoke<UpdateInfo>("check_update");
+      setInfo(r);
+      if (!r.hasUpdate) setMsg("已经是最新版本");
+    } catch (e) {
+      setMsg(String(e));
+    } finally {
+      setState("idle");
+    }
+  };
+  const install = async () => {
+    if (!info?.installerUrl) return;
+    setState("installing");
+    setMsg("正在下载新版本，下载完会自动打开安装程序…");
+    try {
+      await invoke("install_update", { url: info.installerUrl });
+    } catch (e) {
+      setMsg(String(e));
+      setState("idle");
+    }
+  };
+
+  return (
+    <section>
+      <h3>通用</h3>
+      <div className="st-toggle">
+        <span className="st-option-text">
+          <span>开机自动启动</span>
+          <small>开机后只显示桌面歌词，主窗口留在托盘里</small>
+        </span>
+        <button
+          className={`st-switch${autostart ? " is-on" : ""}`}
+          role="switch"
+          aria-checked={!!autostart}
+          aria-label="开机自动启动"
+          disabled={autostart === null}
+          onClick={toggleAutostart}
+        >
+          <span />
+        </button>
+      </div>
+      <p className="st-note">关闭主窗口后 ingfy 会留在右下角托盘继续显示桌面歌词，从托盘菜单退出。</p>
+      <dl className="st-keys">
+        {SHORTCUTS.map(([k, v]) => (
+          <div key={k}>
+            <dt>
+              {k.split(" ").map((x) => (
+                <kbd key={x}>{x}</kbd>
+              ))}
+            </dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="st-update">
+        <span>
+          ingfy {info?.current ?? ""}
+          {info?.hasUpdate && <em className="st-new">新版本 {info.latest}</em>}
+        </span>
+        {info?.hasUpdate && info.installerUrl ? (
+          <button className="st-btn st-btn--primary" onClick={install} disabled={state !== "idle"}>
+            {state === "installing" ? "正在更新…" : "立即更新"}
+          </button>
+        ) : (
+          <button className="st-btn" onClick={check} disabled={state !== "idle"}>
+            {state === "checking" ? "正在检查…" : "检查更新"}
+          </button>
+        )}
+      </div>
+      {msg && <p className="st-note">{msg}</p>}
+    </section>
+  );
 }
 
 const LYRIC_PRESETS = [
@@ -380,6 +494,7 @@ export function SettingsPanel(p: Props) {
                 )}
               </div>
             </section>
+            <GeneralSection initial={p.updateInfo} />
           </div>
         </div>
       </div>

@@ -86,9 +86,11 @@ function buildLyrics(r: LyricsResult | null): LyricsState {
   return { status: "ready", lines, synced, source: r.source, wordSync, translated: lines.some((l) => !!l.trans) };
 }
 
-/** 换歌时拉歌词，结果按歌曲缓存 */
-export function useLyrics(now: NowPlaying | null): LyricsState {
-  const key = now?.title ? trackKey(now) : "";
+/** 换歌时拉歌词，结果按歌曲缓存。choice 是用户手动选的歌词版本（"换一个歌词"） */
+export function useLyrics(now: NowPlaying | null, choice?: { source?: string; id?: string }): LyricsState {
+  const track = now?.title ? trackKey(now) : "";
+  const picked = choice?.source && choice?.id ? `${choice.source}:${choice.id}` : "";
+  const key = track ? `${track}|${picked}` : "";
   const [state, setState] = useState<LyricsState>({ status: "idle", lines: [], synced: false });
 
   useEffect(() => {
@@ -103,12 +105,15 @@ export function useLyrics(now: NowPlaying | null): LyricsState {
     }
     let alive = true;
     setState({ status: "loading", lines: [], synced: false });
-    invoke<LyricsResult | null>("fetch_lyrics", {
-      title: now.title,
-      artist: now.artist,
-      album: now.album,
-      durationMs: now.durationMs,
-    })
+    const request = picked
+      ? invoke<LyricsResult | null>("lyrics_by_id", { source: choice!.source, id: choice!.id })
+      : invoke<LyricsResult | null>("fetch_lyrics", {
+          title: now.title,
+          artist: now.artist,
+          album: now.album,
+          durationMs: now.durationMs,
+        });
+    request
       .then((r) => {
         let next: LyricsState;
         next = buildLyrics(r);

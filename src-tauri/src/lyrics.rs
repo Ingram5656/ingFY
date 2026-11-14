@@ -82,11 +82,91 @@ pub async fn fetch(
     }
 }
 
+// ---------------------------------------------------------------- 手动换歌词
+
+/// "换一个歌词"列表里的一项
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricOption {
+    /// "netease" / "lrclib"
+    pub source: String,
+    pub id: String,
+    pub name: String,
+    pub artists: String,
+    pub duration_ms: i64,
+    /// LRCLIB 能提前知道有没有时间轴；网易云要取了才知道，为 None
+    pub synced: Option<bool>,
+}
+
+/// 网易云和 LRCLIB 各取最多 10 个候选，按和当前歌曲的相似度排好
+pub async fn options(title: &str, artist: &str, duration_ms: i64) -> Vec<LyricOption> {
+    let title = clean_title(title);
+    let mut out = netease::options(&title, artist, duration_ms).await.unwrap_or_default();
+    out.extend(lrclib_options(&title, artist).await.unwrap_or_default());
+    out
+}
+
+/// 按用户选定的候选取歌词
+pub async fn fetch_by(source: &str, id: &str) -> Result<Option<LyricsResult>, reqwest::Error> {
+    match source {
+        "netease" => match id.parse::<i64>() {
+            Ok(n) => netease::fetch_by_id(n).await,
+            Err(_) => Ok(None),
+        },
+        "lrclib" => {
+            let client = reqwest::Client::builder()
+                .user_agent("ingfy/1.0 (desktop lyrics app)")
+                .timeout(Duration::from_secs(10))
+                .build()?;
+            let resp = client.get(format!("https://lrclib.net/api/get/{id}")).send().await?;
+            if !resp.status().is_success() {
+                return Ok(None);
+            }
+            let item: LrcLibItem = resp.json().await?;
+            let r: LyricsResult = item.into();
+            Ok(if r.has_any() { Some(r) } else { None })
+        }
+        _ => Ok(None),
+    }
+}
+
+async fn lrclib_options(title: &str, artist: &str) -> Result<Vec<LyricOption>, reqwest::Error> {
+    let client = reqwest::Client::builder()
+        .user_agent("ingfy/1.0 (desktop lyrics app)")
+        .timeout(Duration::from_secs(10))
+        .build()?;
+    let resp = client
+        .get("https://lrclib.net/api/search")
+        .query(&[("track_name", title), ("artist_name", artist)])
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        return Ok(vec![]);
+    }
+    let items: Vec<LrcLibItem> = resp.json().await?;
+    Ok(items
+        .into_iter()
+        .filter(|i| i.id.is_some())
+        .take(10)
+        .map(|i| LyricOption {
+            source: "lrclib".into(),
+            id: i.id.unwrap_or_default().to_string(),
+            name: i.track_name.clone().unwrap_or_default(),
+            artists: i.artist_name.clone().unwrap_or_default(),
+            duration_ms: (i.duration.unwrap_or(0.0) * 1000.0) as i64,
+            synced: Some(i.synced_lyrics.as_deref().map_or(false, |s| !s.trim().is_empty())),
+        })
+        .collect())
+}
+
 // ---------------------------------------------------------------- LRCLIB
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LrcLibItem {
+    id: Option<i64>,
+    track_name: Option<String>,
+    artist_name: Option<String>,
     synced_lyrics: Option<String>,
     plain_lyrics: Option<String>,
     instrumental: Option<bool>,
@@ -193,6 +273,48 @@ mod netease {
             }
         }
         Ok(None)
+    }
+
+    fn client() -> Result<reqwest::Client, reqwest::Error> {
+        reqwest::Client::builder().user_agent(UA).timeout(Duration::from_secs(8)).build()
+    }
+
+    pub async fn fetch_by_id(id: i64) -> Result<Option<LyricsResult>, reqwest::Error> {
+        lyric(&client()?, id).await
+    }
+
+    /// 手动换歌词用：把搜索结果都列出来（不过滤翻唱等），自动匹配会选的排在前面
+    pub async fn options(title: &str, artist: &str, duration_ms: i64) -> Result<Vec<LyricOption>, reqwest::Error> {
+        let client = client()?;
+        let artists = split_artists(artist);
+        let first = artists.first().cloned().unwrap_or_default();
+        let songs = search(&client, format!("{title} {first}").trim()).await?;
+        let mut scored: Vec<(f64, LyricOption)> = songs
+            .iter()
+            .filter_map(|s| {
+                let id = s.get("id")?.as_i64()?;
+                let name = s.get("name")?.as_str()?.to_string();
+                let ar = s
+                    .get("ar")
+                    .and_then(|a| a.as_array())
+                    .map(|xs| xs.iter().filter_map(|x| x.get("name")?.as_str()).collect::<Vec<_>>().join(" / "))
+                    .unwrap_or_default();
+                let sc = score(s, title, &artists, duration_ms).map_or(0.0, |c| c.score);
+                Some((
+                    sc,
+                    LyricOption {
+                        source: "netease".into(),
+                        id: id.to_string(),
+                        name,
+                        artists: ar,
+                        duration_ms: s.get("dt").and_then(|d| d.as_i64()).unwrap_or(0),
+                        synced: None,
+                    },
+                ))
+            })
+            .collect();
+        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(scored.into_iter().take(10).map(|(_, o)| o).collect())
     }
 
     async fn search(client: &reqwest::Client, q: &str) -> Result<Vec<Value>, reqwest::Error> {

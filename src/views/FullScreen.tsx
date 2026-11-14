@@ -17,6 +17,13 @@ import { findLineIndex, lineProgress } from "../lib/lrc";
 import { mediaControl, useAlbumPalette, useLyrics, usePlayer, usePosition, useSeek } from "../lib/player";
 import { lightPalette, loadBackgroundImage, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
+import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
+import { trackKey } from "../lib/types";
+import { SLEEP_FADE_MS, sleepLabel, useSleepTimer } from "../lib/sleep";
+import { MoreMenu } from "../components/MoreMenu";
+import { LyricPicker } from "../components/LyricPicker";
+import { ShareSheet } from "../components/ShareSheet";
+import type { UpdateInfo } from "../components/SettingsPanel";
 
 const STYLES: { id: LightStyle; label: string }[] = [
   { id: "tube", label: "灯管" },
@@ -82,7 +89,12 @@ export default function FullScreen() {
   const { now, artwork, desktopLocked } = usePlayer();
   const rawPosition = usePosition(now);
   const { position, seek, setPreview } = useSeek(now, rawPosition);
-  const lyrics = useLyrics(now);
+  const track = now?.title ? trackKey(now) : "";
+  // 这首歌单独的歌词设置：时间偏移、手动选的歌词版本
+  const pref = useLyricPref(track);
+  const lyrics = useLyrics(now, pref);
+  const offset = pref.offset ?? 0;
+  const lyricPos = position + offset;
   const palette = useAlbumPalette(artwork);
   const scale = useStageScale();
   const [settings, update] = useSettings();
@@ -93,13 +105,44 @@ export default function FullScreen() {
   const [vinylMenuOpen, setVinylMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const sleep = useSleepTimer(now, position);
   const fullscreen = useFullscreen();
   // 启动时桌面歌词默认不显示，点右上角按钮打开
   const [desktopVisible, setDesktopVisible] = useState(false);
 
   const lines = lyrics.lines;
-  const idx = lyrics.synced ? findLineIndex(lines, position) : -1;
-  const progress = lyrics.synced ? lineProgress(lines, idx, position, now?.durationMs ?? 0) : 0;
+  const idx = lyrics.synced ? findLineIndex(lines, lyricPos) : -1;
+  const progress = lyrics.synced ? lineProgress(lines, idx, lyricPos, now?.durationMs ?? 0) : 0;
+  // 点歌词跳转时扣掉偏移，跳到的位置正好是这句开始
+  const seekLyric = (t: number) => seek(Math.max(0, t - offset));
+
+  // 托盘或快捷键改了桌面歌词的显示状态，同步按钮
+  useEffect(() => {
+    const un = listen<boolean>("desktop-visible", (e) => setDesktopVisible(e.payload));
+    return () => void un.then((f) => f());
+  }, []);
+  // 全局快捷键：收藏要用这里的 Spotify 状态；切歌时记下方向给唱片动画用
+  const spotifyRef = useRef(spotify);
+  spotifyRef.current = spotify;
+  useEffect(() => {
+    const un = listen<string>("shortcut", (e) => {
+      const sp = spotifyRef.current;
+      if (e.payload === "like" && sp.account.loggedIn && !sp.account.needsReauth) void sp.toggleLike();
+      else if (e.payload === "next") markDirection(1);
+      else if (e.payload === "previous") markDirection(-1);
+    });
+    return () => void un.then((f) => f());
+  }, []);
+  // 启动时悄悄检查一次更新，有新版本就在设置按钮上点个小红点
+  useEffect(() => {
+    invoke<UpdateInfo>("check_update")
+      .then((r) => setUpdateInfo(r))
+      .catch(() => {});
+  }, []);
 
   const toggleDesktop = () => {
     const v = !desktopVisible;
@@ -125,7 +168,8 @@ export default function FullScreen() {
   const modeSegRef = useRef<HTMLDivElement>(null);
   const lightSegRef = useRef<HTMLDivElement>(null);
   // 3 秒没动鼠标就收起上下栏，只留中间；开着面板或菜单时不收
-  const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen || listOpen);
+  const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen || listOpen || moreOpen || pickerOpen || shareOpen);
+  const sleepFading = sleep.left !== null && sleep.left <= SLEEP_FADE_MS;
   // 上下栏收起再出现时也重新量一次滑块位置
   useSegThumb(modeSegRef, `${settings.viewMode}|${idle}`);
   useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}`);
@@ -134,7 +178,7 @@ export default function FullScreen() {
   const showCover = bg === "cover" && artwork;
 
   return (
-    <div className={`fs${idle ? " is-idle" : ""}`}>
+    <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}`}>
       {/* 背景层：铺满整个窗口 */}
       {(bg === "fluid" || (bg === "image" && !bgImage) || (bg === "cover" && !artwork)) && (
         <>
@@ -276,7 +320,21 @@ export default function FullScreen() {
             >
               <LockIcon open={!desktopLocked} />
             </button>
-            <button className="ibtn" aria-label="设置" onClick={() => setSettingsOpen(true)}>
+            <button
+              className={`ibtn more-btn${sleep.mode !== "off" ? " has-badge" : ""}`}
+              aria-label="更多"
+              aria-expanded={moreOpen}
+              aria-pressed={moreOpen}
+              title={sleep.mode !== "off" ? sleepLabel(sleep.mode, sleep.left) : "更多"}
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="5.5" cy="12" r="1.7" />
+                <circle cx="12" cy="12" r="1.7" />
+                <circle cx="18.5" cy="12" r="1.7" />
+              </svg>
+            </button>
+            <button className={`ibtn${updateInfo?.hasUpdate ? " has-dot" : ""}`} aria-label={updateInfo?.hasUpdate ? "设置（有新版本）" : "设置"} onClick={() => setSettingsOpen(true)}>
               <GearIcon />
             </button>
           </div>
@@ -313,7 +371,9 @@ export default function FullScreen() {
                 {settings.lightsOn &&
                   lightLayers.map((l) => (
                     <div key={l.key} className={`light-layer${l.leaving ? " is-leaving" : " is-entering"}`}>
-                      <Lights palette={lightPalette(settings, palette)} style={l.key} playing={!!now?.playing} reactive={settings.beat} />
+                      <div className="light-dim">
+                        <Lights palette={lightPalette(settings, palette)} style={l.key} playing={!!now?.playing} reactive={settings.beat} />
+                      </div>
                     </div>
                   ))}
                 <section className={`fs-track${showAlbum ? "" : " is-hidden"}${layout === "album" ? " is-solo" : ""}`} aria-hidden={!showAlbum || undefined}>
@@ -339,7 +399,7 @@ export default function FullScreen() {
                   {lyrics.status === "ready" && !lyrics.synced && (
                     <div className="plain">{lines.map((l, i) => <p key={i}>{l.text}</p>)}</div>
                   )}
-                  {lyrics.status === "ready" && lyrics.synced && <LyricScroller lines={lines} index={idx} progress={progress} onSeek={seek} showTranslation={settings.showTranslation} />}
+                  {lyrics.status === "ready" && lyrics.synced && <LyricScroller lines={lines} index={idx} progress={progress} onSeek={seekLyric} showTranslation={settings.showTranslation} />}
                 </section>
               </>
             )}
@@ -350,6 +410,28 @@ export default function FullScreen() {
           <div className={`toast glass${spotify.message.kind === "error" ? " toast--error" : ""}`} role="status">
             {spotify.message.text}
           </div>
+        )}
+
+        {moreOpen && (
+          <MoreMenu
+            onClose={() => setMoreOpen(false)}
+            offset={offset}
+            canAdjust={!!track && lyrics.status === "ready" && lyrics.synced}
+            onOffset={(ms) => setLyricPref(track, { offset: Math.max(-10000, Math.min(10000, Math.round(ms / 100) * 100)) })}
+            canPickLyrics={!!now?.title}
+            onPickLyrics={() => {
+              setMoreOpen(false);
+              setPickerOpen(true);
+            }}
+            canShare={lyrics.status === "ready" && lines.some((l) => l.text.trim())}
+            onShare={() => {
+              setMoreOpen(false);
+              setShareOpen(true);
+            }}
+            sleep={sleep.mode}
+            sleepLeft={sleepLabel(sleep.mode, sleep.left)}
+            onSleep={sleep.start}
+          />
         )}
 
         {/* 右下角：播放列表（正在播放的专辑 / 歌单里的所有歌） */}
@@ -436,6 +518,7 @@ export default function FullScreen() {
 
         {settingsOpen && (
           <SettingsPanel
+            updateInfo={updateInfo}
             settings={settings}
             update={update}
             palette={palette}
@@ -446,6 +529,28 @@ export default function FullScreen() {
             onLogin={spotify.login}
             onLogout={spotify.logout}
             onClose={() => setSettingsOpen(false)}
+          />
+        )}
+
+        {pickerOpen && now && (
+          <LyricPicker
+            now={now}
+            current={pref}
+            onPick={(c) => {
+              setLyricPref(track, c ? { source: c.source, id: c.id } : { source: undefined, id: undefined });
+              setPickerOpen(false);
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
+        {shareOpen && now && (
+          <ShareSheet
+            now={now}
+            lines={lines}
+            index={idx}
+            artworkUrl={artwork?.dataUrl ?? null}
+            palette={palette}
+            onClose={() => setShareOpen(false)}
           />
         )}
       </div>
