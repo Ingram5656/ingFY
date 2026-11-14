@@ -163,7 +163,8 @@ export const EN: Record<string, string> = {
 
   // ---------- 唱片模式 ----------
   "左右拖动唱片换歌": "Drag the record left or right to change songs",
-  "唱针：拖动调整播放进度": "Tonearm: drag to seek",
+  "唱针：单击暂停或继续，拖动调整播放进度": "Tonearm: click to pause or resume, drag to seek",
+  "单击暂停或继续，拖动调整进度": "Click to pause or resume, drag to seek",
   "自定义唱片": "Customize record",
   "中间的标签": "Center label",
   "标签内容": "Label",
@@ -415,4 +416,9 @@ export const EN: Record<string, string> = {
   "Spotify 暂时限制了请求，{n} 秒后再试": "Spotify is limiting requests. Try again in {n} s",
   "Spotify 暂时限制了请求，大约 {n} 分钟后再试": "Spotify is limiting requests. Try again in about {n} min",
   "Spotify 暂时限制了请求，大约 {n} 小时后再试": "Spotify is limiting requests. Try again in about {n} h",
+  "存储": "Storage",
+  "缓存": "Cache",
+  "清理": "Clear",
+  "正在清理…": "Clearing…",
+  "已清理": "Cleared",
 };

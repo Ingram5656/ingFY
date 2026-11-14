@@ -5,6 +5,7 @@ import type { Artwork, LyricLine, LyricsResult, NowPlaying, Snapshot } from "./t
 import { trackKey } from "./types";
 import { attachTranslation, dropCredits, parseLrc, parseYrc, plainToLines } from "./lrc";
 import { extractPalette, FALLBACK_PALETTE } from "./palette";
+import { registerCache, useCacheEpoch } from "./cache";
 
 /** 订阅后端推送的正在播放、封面和桌面歌词锁定状态 */
 export function usePlayer() {
@@ -46,16 +47,7 @@ export function usePosition(now: NowPlaying | null): number {
       // 高刷屏上 rAF 一秒一两百次，进度最多更新 60 次就够顺滑，省下一半以上的重绘
       if (ts - last < 15) return;
       last = ts;
-      const n = nowRef.current;
-      if (n) {
-        const sane = Math.abs(Date.now() - n.updatedAtMs) < 24 * 3600_000;
-        const base = sane ? n.updatedAtMs : n.receivedAt ?? Date.now();
-        const elapsed = n.playing ? Date.now() - base : 0;
-        const p = n.positionMs + elapsed;
-        setPos(n.durationMs > 0 ? Math.min(p, n.durationMs) : p);
-      } else {
-        setPos(0);
-      }
+      setPos(livePosition(nowRef.current));
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -64,11 +56,22 @@ export function usePosition(now: NowPlaying | null): number {
   return pos;
 }
 
+/** 此刻播到哪了（毫秒）：播放器上次报告的进度 + 距那时过去的时间 */
+export function livePosition(n: NowPlaying | null): number {
+  if (!n) return 0;
+  const sane = Math.abs(Date.now() - n.updatedAtMs) < 24 * 3600_000;
+  const base = sane ? n.updatedAtMs : n.receivedAt ?? Date.now();
+  const elapsed = n.playing ? Date.now() - base : 0;
+  const p = n.positionMs + elapsed;
+  return n.durationMs > 0 ? Math.min(p, n.durationMs) : p;
+}
+
 export type LyricsState =
   | { status: "idle" | "loading" | "none" | "error"; lines: LyricLine[]; synced: false; source?: string; instrumental?: boolean }
   | { status: "ready"; lines: LyricLine[]; synced: boolean; source: string; wordSync?: boolean; translated?: boolean };
 
 const lyricsCache = new Map<string, LyricsState>();
+registerCache(() => lyricsCache.clear());
 /** 最多记住最近 80 首的歌词，开着几天也不会越攒越多 */
 const LYRICS_CACHE_MAX = 80;
 
@@ -105,6 +108,8 @@ export function useLyrics(now: NowPlaying | null, choice?: { source?: string; id
   const picked = choice?.source && choice?.id ? `${choice.source}:${choice.id}` : "";
   const key = track ? `${track}|${picked}` : "";
   const [state, setState] = useState<LyricsState>({ status: "idle", lines: [], synced: false });
+  // 清理缓存后重新拉一次当前这首的歌词
+  const epoch = useCacheEpoch();
 
   useEffect(() => {
     if (!key || !now) {
@@ -137,9 +142,9 @@ export function useLyrics(now: NowPlaying | null, choice?: { source?: string; id
     return () => {
       alive = false;
     };
-    // 只在换歌时重新拉取
+    // 只在换歌（或清理缓存）时重新拉取
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, epoch]);
 
   return state;
 }

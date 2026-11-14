@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useCrossfade, useIdle, useSegThumb } from "../lib/motion";
 import { LibraryView } from "../components/Shelf";
 import { NowListPanel } from "../components/NowList";
@@ -14,7 +14,9 @@ import { VinylView } from "../components/Vinyl";
 import { markDirection } from "../lib/vinyl";
 import { DesktopLyricsIcon, GearIcon, HeartIcon, LockIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from "../components/Icons";
 import { findLineIndex, lineProgress } from "../lib/lrc";
-import { mediaControl, useAlbumPalette, useLyrics, usePlayer, usePosition, useSeek } from "../lib/player";
+import { mediaControl, useAlbumPalette, useLyrics, usePlayer } from "../lib/player";
+import { PlayheadProvider, usePlayhead, usePositionRef } from "../lib/playhead";
+import type { LyricLine } from "../lib/types";
 import { lightPalette, loadBackgroundImage, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
@@ -87,17 +89,59 @@ function useBackgroundImage() {
   return img;
 }
 
+// ---- 跟着播放进度走的三块：各自订阅进度，每帧只重绘它们自己 ----
+
+function LiveSeekBar({ duration }: { duration: number }) {
+  const { position, seek, setPreview } = usePlayhead();
+  return <SeekBar position={position} duration={duration} onPreview={setPreview} onSeek={seek} />;
+}
+
+function LiveLyrics(p: { lines: LyricLine[]; offset: number; duration: number; showTranslation: boolean }) {
+  const { position, seek } = usePlayhead();
+  const at = position + p.offset;
+  const idx = findLineIndex(p.lines, at);
+  return (
+    <LyricScroller
+      lines={p.lines}
+      index={idx}
+      progress={lineProgress(p.lines, idx, at, p.duration)}
+      // 点歌词跳转时扣掉偏移，跳到的位置正好是这句开始
+      onSeek={(t) => seek(Math.max(0, t - p.offset))}
+      showTranslation={p.showTranslation}
+    />
+  );
+}
+
+type VinylProps = ComponentProps<typeof VinylView>;
+function LiveVinyl({
+  lines,
+  synced,
+  offset,
+  ...rest
+}: Omit<VinylProps, "position" | "lyricText" | "onPreview" | "onSeek"> & { lines: LyricLine[]; synced: boolean; offset: number }) {
+  const { position, seek, setPreview } = usePlayhead();
+  const idx = synced ? findLineIndex(lines, position + offset) : -1;
+  return <VinylView {...rest} position={position} lyricText={idx >= 0 ? lines[idx].text : rest.now?.title ?? ""} onPreview={setPreview} onSeek={seek} />;
+}
+
 export default function FullScreen() {
+  const player = usePlayer();
+  // 播放进度放在外面这一层，里面的整个界面只在换歌、改设置这些时候才重绘
+  return (
+    <PlayheadProvider now={player.now}>
+      <FullScreenBody {...player} />
+    </PlayheadProvider>
+  );
+}
+
+function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePlayer>) {
   useLang(); // 切换语言时整页重绘
-  const { now, artwork, desktopLocked } = usePlayer();
-  const rawPosition = usePosition(now);
-  const { position, seek, setPreview } = useSeek(now, rawPosition);
+  const positionRef = usePositionRef();
   const track = now?.title ? trackKey(now) : "";
   // 这首歌单独的歌词设置：时间偏移、手动选的歌词版本
   const pref = useLyricPref(track);
   const lyrics = useLyrics(now, pref);
   const offset = pref.offset ?? 0;
-  const lyricPos = position + offset;
   const palette = useAlbumPalette(artwork);
   const scale = useStageScale();
   const [settings, update] = useSettings();
@@ -112,16 +156,12 @@ export default function FullScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const sleep = useSleepTimer(now, position);
+  const sleep = useSleepTimer(now);
   const fullscreen = useFullscreen();
   // 启动时桌面歌词默认不显示，点右上角按钮打开
   const [desktopVisible, setDesktopVisible] = useState(false);
 
   const lines = lyrics.lines;
-  const idx = lyrics.synced ? findLineIndex(lines, lyricPos) : -1;
-  const progress = lyrics.synced ? lineProgress(lines, idx, lyricPos, now?.durationMs ?? 0) : 0;
-  // 点歌词跳转时扣掉偏移，跳到的位置正好是这句开始
-  const seekLyric = (t: number) => seek(Math.max(0, t - offset));
 
   // 托盘或快捷键改了桌面歌词的显示状态，同步按钮
   useEffect(() => {
@@ -140,6 +180,17 @@ export default function FullScreen() {
     });
     return () => void un.then((f) => f());
   }, []);
+  // 灵动岛窗口用到时才创建，所以开关由主窗口来管：打开时让后端把窗口建出来
+  useEffect(() => {
+    invoke("island_set", { visible: settings.islandOn, locked: settings.islandLocked }).catch(() => {});
+  }, [settings.islandOn, settings.islandLocked]);
+  // 托盘里点了"显示 / 隐藏灵动岛"
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  useEffect(() => {
+    const un = listen("island-toggle", () => update({ islandOn: !settingsRef.current.islandOn }));
+    return () => void un.then((f) => f());
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // 启动时悄悄检查一次更新，有新版本就在设置按钮上点个小红点
   useEffect(() => {
     invoke<UpdateInfo>("check_update")
@@ -371,18 +422,17 @@ export default function FullScreen() {
                 onCloseSearch={() => setSearchOpen(false)}
               />
             ) : key === "vinyl" ? (
-            <VinylView
+            <LiveVinyl
               now={now}
-              position={position}
               artworkUrl={artwork?.dataUrl ?? null}
               palette={palette}
               settings={settings}
               update={update}
-              lyricText={lyrics.synced && idx >= 0 ? lines[idx].text : now?.title ?? ""}
+              lines={lines}
+              synced={lyrics.synced}
+              offset={offset}
               menuOpen={vinylMenuOpen}
               onCloseMenu={() => setVinylMenuOpen(false)}
-              onPreview={setPreview}
-              onSeek={seek}
             />
             ) : (
               <>
@@ -418,7 +468,7 @@ export default function FullScreen() {
                   {lyrics.status === "ready" && !lyrics.synced && (
                     <div className="plain">{lines.map((l, i) => <p key={i}>{l.text}</p>)}</div>
                   )}
-                  {lyrics.status === "ready" && lyrics.synced && <LyricScroller lines={lines} index={idx} progress={progress} onSeek={seekLyric} showTranslation={settings.showTranslation} />}
+                  {lyrics.status === "ready" && lyrics.synced && <LiveLyrics lines={lines} offset={offset} duration={now?.durationMs ?? 0} showTranslation={settings.showTranslation} />}
                 </section>
               </>
             )}
@@ -526,7 +576,7 @@ export default function FullScreen() {
               <NextIcon />
             </button>
           </div>
-          <SeekBar position={position} duration={now?.durationMs ?? 0} onPreview={setPreview} onSeek={seek} />
+          <LiveSeekBar duration={now?.durationMs ?? 0} />
           <button
             className={`ibtn heart${spotify.liked ? " is-liked" : ""}`}
             aria-label={!spotify.account.loggedIn ? t("连接 Spotify 后可收藏") : spotify.liked ? t("从 Spotify 收藏中移除") : t("收藏到 Spotify")}
@@ -573,7 +623,8 @@ export default function FullScreen() {
           <ShareSheet
             now={now}
             lines={lines}
-            index={idx}
+            // 打开分享的那一刻唱到哪一句
+            index={lyrics.synced ? findLineIndex(lines, positionRef.current + offset) : -1}
             artworkUrl={artwork?.dataUrl ?? null}
             palette={palette}
             onClose={() => setShareOpen(false)}

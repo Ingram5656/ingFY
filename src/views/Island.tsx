@@ -42,7 +42,7 @@ export default function Island() {
   const pref = useLyricPref(key);
   const lyrics = useLyrics(now, pref);
   const palette = useAlbumPalette(artwork);
-  const [settings, update] = useSettings();
+  const [settings] = useSettings();
   useApplySettings(settings);
 
   const [expanded, setExpanded] = useState(false);
@@ -61,14 +61,11 @@ export default function Island() {
     if (!locked) setGhost(false);
   }, [settings.islandOn, locked]);
 
-  // 后端通知：贴边状态变了、锁定时鼠标进出、托盘里点了显示 / 隐藏
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
+  // 后端通知：贴边状态变了、锁定时鼠标进出。（托盘里的显示 / 隐藏由主窗口处理：这个窗口用到时才创建）
   useEffect(() => {
     const un = [
       listen<boolean>("island-dock", (e) => setDocked(e.payload)),
       listen<boolean>("island-hover", (e) => setGhost(e.payload)),
-      listen("island-toggle", () => update({ islandOn: !settingsRef.current.islandOn })),
     ];
     return () => un.forEach((p) => p.then((u) => u()));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

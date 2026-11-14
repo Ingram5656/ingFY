@@ -96,11 +96,11 @@ async fn fetch_lyrics(
 /// 锁定后桌面歌词窗口鼠标穿透，只能从主窗口解锁
 #[tauri::command]
 fn set_desktop_locked(app: AppHandle, state: State<AppState>, locked: bool) -> Result<(), String> {
-    let win = app
-        .get_webview_window("desktop")
-        .ok_or("找不到桌面歌词窗口")?;
-    win.set_ignore_cursor_events(locked)
-        .map_err(|e| e.to_string())?;
+    // 桌面歌词窗口还没建的话先记着，建的时候会照这个状态设
+    if let Some(win) = app.get_webview_window("desktop") {
+        win.set_ignore_cursor_events(locked)
+            .map_err(|e| e.to_string())?;
+    }
     state.snapshot.lock().unwrap().desktop_locked = locked;
     app.emit("desktop-locked", locked).map_err(|e| e.to_string())
 }
@@ -111,20 +111,26 @@ fn set_light_response(value: u8) {
     audio::RESPONSE.store(value.min(100), std::sync::atomic::Ordering::Relaxed);
 }
 
-/// 灵动岛显示 / 隐藏、锁定 / 不锁定。返回现在是不是贴在顶边
+/// 灵动岛显示 / 隐藏、锁定 / 不锁定。返回现在是不是贴在顶边。
+/// 第一次显示时才创建窗口（所以是异步命令：Windows 上不能在同步命令里建窗口）
 #[tauri::command]
-fn island_set(app: AppHandle, state: State<AppState>, visible: bool, locked: bool) -> Result<bool, String> {
-    let win = app.get_webview_window("island").ok_or("找不到灵动岛窗口")?;
-    win.set_ignore_cursor_events(locked).map_err(|e| e.to_string())?;
-    let result = if visible { win.show() } else { win.hide() };
-    result.map_err(|e| e.to_string())?;
+async fn island_set(app: AppHandle, visible: bool, locked: bool) -> Result<bool, String> {
+    let win = if visible { Some(ensure_window(&app, "island")?) } else { app.get_webview_window("island") };
+    if let Some(win) = &win {
+        win.set_ignore_cursor_events(locked).map_err(|e| e.to_string())?;
+        let result = if visible { win.show() } else { win.hide() };
+        result.map_err(|e| e.to_string())?;
+    }
+    let state = app.state::<AppState>();
     let mut st = state.island.lock().unwrap();
     st.visible = visible;
     st.locked = locked;
     if !locked {
         st.hover = false;
     }
-    Ok(st.docked)
+    // 窗口还没建过：建出来时会放在顶边
+    let docked = win.is_none() || st.docked;
+    Ok(docked)
 }
 
 /// 改灵动岛窗口大小（逻辑像素）。保持水平居中位置和顶边不动，展开时往下长
@@ -153,14 +159,102 @@ fn island_layout(app: AppHandle, width: f64, height: f64) -> Result<(), String> 
     Ok(())
 }
 
+/// 异步命令：第一次显示时要创建窗口，Windows 上不能在同步命令里建
 #[tauri::command]
-fn set_desktop_visible(app: AppHandle, visible: bool) -> Result<(), String> {
-    let win = app
-        .get_webview_window("desktop")
-        .ok_or("找不到桌面歌词窗口")?;
-    let result = if visible { win.show() } else { win.hide() };
-    result.map_err(|e| e.to_string())?;
-    app.emit("desktop-visible", visible).map_err(|e| e.to_string())
+async fn set_desktop_visible(app: AppHandle, visible: bool) -> Result<(), String> {
+    show_desktop(&app, visible)
+}
+
+// ---------- 缓存 ----------
+
+/// 下载的更新安装包放在这里
+fn update_installer_path() -> PathBuf {
+    std::env::temp_dir().join("ingfy-update-setup.exe")
+}
+
+/// 一个文件或文件夹占多少字节（读不了的跳过）
+fn path_size(path: &std::path::Path) -> u64 {
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return 0 };
+    if meta.is_file() {
+        return meta.len();
+    }
+    if !meta.is_dir() {
+        return 0;
+    }
+    let Ok(entries) = std::fs::read_dir(path) else { return 0 };
+    entries.flatten().map(|e| path_size(&e.path())).sum()
+}
+
+/// 算作缓存的东西：网页内核存在硬盘上的缓存（封面图片等），和下载过的更新安装包。
+/// 设置、登录状态不在里面
+fn cache_paths(app: &AppHandle) -> Vec<PathBuf> {
+    let mut paths = vec![update_installer_path()];
+    if let Ok(dir) = app.path().app_local_data_dir() {
+        let profile = dir.join("EBWebView").join("Default");
+        paths.push(profile.join("Cache"));
+        paths.push(profile.join("Code Cache"));
+        paths.push(profile.join("GPUCache"));
+        paths.push(profile.join("Service Worker").join("CacheStorage"));
+    }
+    paths
+}
+
+/// 缓存占了多少硬盘空间（字节）
+#[tauri::command]
+async fn cache_size(app: AppHandle) -> u64 {
+    cache_paths(&app).iter().map(|p| path_size(p)).sum()
+}
+
+/// 清理硬盘上的缓存。网页内核那部分是后台清的，清完发 "cache-cleared"
+#[tauri::command]
+async fn clear_cache(app: AppHandle) -> Result<(), String> {
+    let _ = std::fs::remove_file(update_installer_path());
+    // 几个窗口共用一份网页数据，从主窗口清一次就行
+    let win = app.get_webview_window("main").ok_or("找不到主窗口")?;
+    clear_webview_cache(&app, &win)
+}
+
+#[cfg(not(windows))]
+fn clear_webview_cache(app: &AppHandle, _win: &WebviewWindow) -> Result<(), String> {
+    app.emit("cache-cleared", ()).map_err(|e| e.to_string())
+}
+
+/// 让 WebView2 清掉它的硬盘缓存。只清缓存这一类，本地存储（设置等）不受影响
+#[cfg(windows)]
+fn clear_webview_cache(app: &AppHandle, win: &WebviewWindow) -> Result<(), String> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2Profile2, ICoreWebView2_13, COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE,
+        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE,
+    };
+    use windows_core::Interface;
+    let app = app.clone();
+    win.with_webview(move |webview| {
+        let notify = app.clone();
+        let started = (|| -> windows_core::Result<()> {
+            unsafe {
+                let profile = webview
+                    .controller()
+                    .CoreWebView2()?
+                    .cast::<ICoreWebView2_13>()?
+                    .Profile()?
+                    .cast::<ICoreWebView2Profile2>()?;
+                let done = webview2_com::ClearBrowsingDataCompletedHandler::create(Box::new(move |_| -> windows_core::Result<()> {
+                    let _ = notify.emit("cache-cleared", ());
+                    Ok(())
+                }));
+                profile.ClearBrowsingData(
+                    COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE | COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE,
+                    &done,
+                )
+            }
+        })();
+        if let Err(e) = started {
+            eprintln!("[cache] 清理网页缓存失败：{e}");
+            // 没清成也告诉前端一声，别让按钮一直转
+            let _ = app.emit("cache-cleared", ());
+        }
+    })
+    .map_err(|e| e.to_string())
 }
 
 
@@ -488,7 +582,7 @@ async fn install_update(app: AppHandle, url: String) -> Result<(), String> {
         .bytes()
         .await
         .map_err(|e| e.to_string())?;
-    let path = std::env::temp_dir().join("ingfy-update-setup.exe");
+    let path = update_installer_path();
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
     std::process::Command::new(&path).spawn().map_err(|e| format!("无法启动安装程序：{e}"))?;
     app.exit(0);
@@ -505,12 +599,62 @@ fn show_main(app: &AppHandle) {
     }
 }
 
-fn toggle_desktop(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("desktop") {
-        let visible = !w.is_visible().unwrap_or(false);
-        let _ = if visible { w.show() } else { w.hide() };
-        let _ = app.emit("desktop-visible", visible);
+/// 桌面歌词和灵动岛的窗口启动时不建（配置里 create 是 false），第一次用到才按配置建出来，
+/// 没开这两个功能时就少两个网页进程。
+/// 注意：Windows 上不能在同步命令或事件回调里建窗口（会卡死），要在异步命令或单独的线程里调用
+fn ensure_window(app: &AppHandle, label: &str) -> Result<WebviewWindow, String> {
+    // 同一时间只建一个，免得连按两下快捷键建出两个同名窗口
+    static BUILDING: Mutex<()> = Mutex::new(());
+    let _guard = BUILDING.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(win) = app.get_webview_window(label) {
+        return Ok(win);
     }
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == label)
+        .ok_or("配置里找不到这个窗口")?;
+    let win = tauri::WebviewWindowBuilder::from_config(app, config)
+        .and_then(|builder| builder.build())
+        .map_err(|e| e.to_string())?;
+    match label {
+        "desktop" => {
+            place_desktop_window(app);
+            // 窗口建出来之前就锁定过：补上鼠标穿透
+            let locked = app.state::<AppState>().snapshot.lock().unwrap().desktop_locked;
+            if locked {
+                let _ = win.set_ignore_cursor_events(true);
+            }
+        }
+        "island" => place_island_window(app),
+        _ => {}
+    }
+    Ok(win)
+}
+
+/// 显示 / 隐藏桌面歌词，并通知主窗口同步按钮。显示时窗口还没建就先建
+fn show_desktop(app: &AppHandle, visible: bool) -> Result<(), String> {
+    if visible {
+        ensure_window(app, "desktop")?.show().map_err(|e| e.to_string())?;
+    } else if let Some(win) = app.get_webview_window("desktop") {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    app.emit("desktop-visible", visible).map_err(|e| e.to_string())
+}
+
+/// 托盘和快捷键用：这两处是事件回调，建窗口要放到单独的线程里
+fn toggle_desktop(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let visible = app
+            .get_webview_window("desktop")
+            .map_or(false, |w| w.is_visible().unwrap_or(false));
+        if let Err(e) = show_desktop(&app, !visible) {
+            eprintln!("[desktop] {e}");
+        }
+    });
 }
 
 fn control_async(action: &'static str) {
@@ -563,7 +707,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
             "desktop" => toggle_desktop(app),
-            // 灵动岛开关存在前端设置里，让灵动岛窗口自己切换并同步给主窗口
+            // 灵动岛开关存在前端设置里，交给主窗口切换（灵动岛窗口可能还没建）
             "island" => {
                 let _ = app.emit("island-toggle", ());
             }
@@ -743,7 +887,6 @@ fn settle_island(app: &AppHandle, win: &WebviewWindow) {
 fn spawn_island_watcher(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_millis(50));
-        let Some(win) = app.get_webview_window("island") else { continue };
         let (visible, locked, last_move) = {
             let state = app.state::<AppState>();
             let st = state.island.lock().unwrap();
@@ -752,6 +895,7 @@ fn spawn_island_watcher(app: AppHandle) {
         if !visible {
             continue;
         }
+        let Some(win) = app.get_webview_window("island") else { continue };
         if let Some(t) = last_move {
             if t.elapsed() >= std::time::Duration::from_millis(150) && !left_button_down() {
                 app.state::<AppState>().island.lock().unwrap().last_move = None;
@@ -836,6 +980,8 @@ pub fn run() {
             island_set,
             island_layout,
             set_light_response,
+            cache_size,
+            clear_cache,
             lyrics_options,
             lyrics_by_id,
             save_share_image,
@@ -860,8 +1006,7 @@ pub fn run() {
                 *state.client_path.lock().unwrap() = dir.join("spotify_client.txt");
                 *state.tokens_path.lock().unwrap() = path;
             }
-            place_desktop_window(&handle);
-            place_island_window(&handle);
+            // 桌面歌词和灵动岛的窗口这里不建，第一次打开时才建（见 ensure_window）
             spawn_island_watcher(handle.clone());
             if let Err(e) = setup_tray(app) {
                 eprintln!("[tray] 创建托盘图标失败：{e}");
@@ -871,10 +1016,9 @@ pub fn run() {
             }
             // 主窗口在配置里默认隐藏，免得开机自启时闪一下
             if std::env::args().any(|a| a == "--autostart") {
-                if let Some(w) = app.get_webview_window("desktop") {
-                    let _ = w.show();
+                if let Err(e) = show_desktop(&handle, true) {
+                    eprintln!("[desktop] {e}");
                 }
-                let _ = handle.emit("desktop-visible", true);
             } else {
                 show_main(&handle);
             }

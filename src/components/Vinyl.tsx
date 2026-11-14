@@ -100,7 +100,7 @@ const RECORD = 660;
 /** 切歌时抬针、换唱片、落针都要快：整个过程约 1.4 秒，唱针尽快回到新歌开头 */
 const LIFT_MS = 400;
 const SWAP_MS = 650;
-/** 落针用时；之后恢复平时（暂停/继续）的慢速摆动 */
+/** 抬针 / 落针用时：切歌、暂停、继续都用这个速度 */
 const DROP_MS = 400;
 
 function randomLook(): VinylLook {
@@ -243,7 +243,29 @@ export function VinylView(p: Props) {
     if (phase === "idle") lastSnap.current = snap;
   });
 
-  const playing = !!now?.playing;
+  // ---- 单击唱针：暂停 / 继续 ----
+  // 播放器要过一小会儿才报告新状态，这里先按点击的结果画，唱针和唱片马上有反应
+  const [playGuess, setPlayGuess] = useState<boolean | null>(null);
+  const guessTimer = useRef<ReturnType<typeof setTimeout>>();
+  const realPlaying = !!now?.playing;
+  const playing = playGuess ?? realPlaying;
+  const togglePlay = () => {
+    if (!now) return;
+    const want = !playing;
+    setPlayGuess(want);
+    clearTimeout(guessTimer.current);
+    // 播放器一直没照做（比如它不支持暂停）：回到它报告的真实状态
+    guessTimer.current = setTimeout(() => setPlayGuess(null), 2500);
+    void mediaControl("toggle").then((ok) => {
+      if (!ok) setPlayGuess(null);
+    });
+  };
+  // 播放器报告的状态和点击的结果对上了，就不用再猜
+  useEffect(() => {
+    if (playGuess !== null && realPlaying === playGuess) setPlayGuess(null);
+  }, [realPlaying, playGuess]);
+  useEffect(() => () => clearTimeout(guessTimer.current), []);
+
   const settled = phase === "idle";
   const duration = now?.durationMs ?? 0;
   const progress = duration > 0 ? Math.min(1, p.position / duration) : 0;
@@ -265,29 +287,43 @@ export function VinylView(p: Props) {
   };
   const msAtAngle = (a: number) => ((a - ARM_OUTER) / (ARM_INNER - ARM_OUTER)) * duration;
   const canDrag = settled && duration > 0;
+  const canPress = settled && !!now;
+  /** 按下的位置：挪动超过几个像素才算拖，没挪就松手算单击 */
+  const armPress = useRef<{ x: number; y: number } | null>(null);
   const armDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (!canDrag) return;
+    if (e.button !== 0 || !canPress) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const a = angleAt(e);
-    if (a === null) return;
-    setDragAngle(a);
-    p.onPreview(msAtAngle(a));
+    armPress.current = { x: e.clientX, y: e.clientY };
   };
   const armMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (dragAngle === null) return;
+    if (dragAngle === null) {
+      const st = armPress.current;
+      if (!st || !canDrag || Math.hypot(e.clientX - st.x, e.clientY - st.y) < 5) return;
+    }
     const a = angleAt(e);
     if (a === null) return;
     setDragAngle(a);
     p.onPreview(msAtAngle(a));
   };
   const armUp = (e: PointerEvent<HTMLDivElement>) => {
-    if (dragAngle === null) return;
+    const pressed = armPress.current;
+    armPress.current = null;
+    if (dragAngle === null) {
+      // 没拖动就松手：单击，暂停或继续
+      if (pressed && e.type === "pointerup") togglePlay();
+      return;
+    }
     const a = angleAt(e) ?? dragAngle;
     setDragAngle(null);
     p.onPreview(null);
     p.onSeek(msAtAngle(a));
   };
   const armKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === " " || e.key === "Enter") {
+      if (canPress) togglePlay();
+      e.preventDefault();
+      return;
+    }
     if (!canDrag) return;
     if (e.key === "ArrowRight") p.onSeek(Math.min(duration, p.position + 5000));
     else if (e.key === "ArrowLeft") p.onSeek(Math.max(0, p.position - 5000));
@@ -296,10 +332,21 @@ export function VinylView(p: Props) {
   };
 
   const dragging = dragAngle !== null;
-  // 推唱片时唱针先抬起来回到架上
-  const angle = dragging ? dragAngle : playing && settled && !discDrag ? ARM_OUTER + (ARM_INNER - ARM_OUTER) * progress : ARM_REST;
+  // 唱针该不该落在唱片上：暂停、换唱片、推唱片时都抬起来回到架上
+  const onRecord = playing && settled && !discDrag;
+  const liveAngle = ARM_OUTER + (ARM_INNER - ARM_OUTER) * progress;
+  // 抬针 / 落针的那一下：用快的速度，并且途中目标角度定住不动。
+  // 不定住的话，播放进度每帧都在改目标角度，过渡动画被反复从头开始，唱针就会越走越慢、半天回不到位
+  const [swing, setSwing] = useState<{ on: boolean; to: number | null; quick: boolean }>({ on: onRecord, to: null, quick: false });
+  if (swing.on !== onRecord) setSwing({ on: onRecord, to: onRecord ? liveAngle : null, quick: true });
+  useEffect(() => {
+    if (!swing.quick) return;
+    const timer = setTimeout(() => setSwing((v) => ({ ...v, to: null, quick: false })), DROP_MS + 80);
+    return () => clearTimeout(timer);
+  }, [swing.on, swing.quick]);
+  const angle = dragging ? dragAngle : onRecord ? swing.to ?? liveAngle : ARM_REST;
   // 拖动时唱针被"拿起来"了，阴影也变大
-  const lifted = dragging || !!discDrag || !(playing && settled);
+  const lifted = dragging || !onRecord;
 
   const labelFor = (d: Snapshot) => {
     if (s.vinylLabel === "lyric") return null; // 歌词标签单独画在上层，不跟着转
@@ -364,10 +411,11 @@ export function VinylView(p: Props) {
       <div className="tonearm-base glass" aria-hidden="true" />
       <div className="tonearm-knob" aria-hidden="true" />
       <div
-        className={`tonearm${lifted ? " is-lifted" : ""}${dragging ? " is-dragging" : ""}${canDrag ? " can-drag" : ""}`}
+        className={`tonearm${lifted ? " is-lifted" : ""}${dragging ? " is-dragging" : ""}${canPress ? " can-drag" : ""}`}
         role="slider"
         tabIndex={0}
-        aria-label={t("唱针：拖动调整播放进度")}
+        aria-label={t("唱针：单击暂停或继续，拖动调整播放进度")}
+        title={canPress ? t("单击暂停或继续，拖动调整进度") : undefined}
         aria-valuemin={0}
         aria-valuemax={Math.round(duration / 1000)}
         aria-valuenow={Math.round(p.position / 1000)}
@@ -381,7 +429,7 @@ export function VinylView(p: Props) {
             height: ARM_LEN,
             transform: `rotate(${angle.toFixed(2)}deg)`,
             "--needle": colors[0],
-            "--arm-ms": `${fastArm ? (phase === "idle" ? DROP_MS : LIFT_MS) : 1600}ms`,
+            "--arm-ms": `${fastArm ? (phase === "idle" ? DROP_MS : LIFT_MS) : swing.quick ? DROP_MS : 1600}ms`,
           } as CSSProperties
         }
       >

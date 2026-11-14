@@ -11,6 +11,8 @@ import { deskScale, islandScale, lightPalette, lyricScale, thickScale } from "..
 import { Lights } from "./Lights";
 import { VinylEditor } from "./Vinyl";
 import { t, tMsg, useLang } from "../lib/i18n";
+import { listen } from "@tauri-apps/api/event";
+import { cacheSize, clearCaches, formatBytes } from "../lib/cache";
 
 interface Props {
   settings: Settings;
@@ -76,6 +78,34 @@ function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | 
       setState("idle");
     }
   };
+  // 缓存：显示占了多少硬盘空间，点一下清掉
+  const [cacheBytes, setCacheBytes] = useState<number | null>(null);
+  const [cacheState, setCacheState] = useState<"idle" | "clearing" | "done">("idle");
+  useEffect(() => {
+    void cacheSize().then(setCacheBytes);
+    // 硬盘上那部分是后台清的，清完重新量一次
+    const un = listen("cache-cleared", () => {
+      void cacheSize().then(setCacheBytes);
+      setCacheState("done");
+    });
+    return () => void un.then((f) => f());
+  }, []);
+  useEffect(() => {
+    if (cacheState === "idle") return;
+    // 后端迟迟没回话也别一直转；"已清理"显示两秒后变回按钮
+    const timer = setTimeout(() => setCacheState("idle"), cacheState === "clearing" ? 8000 : 2000);
+    return () => clearTimeout(timer);
+  }, [cacheState]);
+  const clearCache = async () => {
+    setCacheState("clearing");
+    try {
+      await clearCaches();
+    } catch (e) {
+      setCacheState("idle");
+      setMsg(tMsg(String(e)));
+    }
+  };
+
   const install = async () => {
     if (!info?.installerUrl) return;
     setState("installing");
@@ -127,6 +157,15 @@ function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | 
             </span>
           </div>
         ))}
+      </Group>
+      <Group title={t("存储")}>
+        <div className="st-cell st-update">
+          <span>{t("缓存")}</span>
+          <span className="st-cache-size">{cacheBytes === null ? "" : formatBytes(cacheBytes)}</span>
+          <button className="st-btn" onClick={() => void clearCache()} disabled={cacheState !== "idle"}>
+            {cacheState === "clearing" ? t("正在清理…") : cacheState === "done" ? t("已清理") : t("清理")}
+          </button>
+        </div>
       </Group>
       <Group title={t("关于")} foot={msg || undefined}>
         <div className="st-cell st-update">

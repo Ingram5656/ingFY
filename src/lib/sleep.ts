@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { NowPlaying } from "./types";
 import { trackKey } from "./types";
-import { mediaControl } from "./player";
+import { livePosition, mediaControl } from "./player";
 import { t } from "./i18n";
 
 export type SleepMode = "off" | 15 | 30 | 60 | "track";
@@ -13,7 +13,7 @@ export const SLEEP_FADE_MS = 20000;
  * 睡眠定时：到点暂停播放。"本首完"= 当前这首播完、下一首一开始就暂停。
  * 返回剩余毫秒（"本首完"时是这首剩下的时间），没开为 null。
  */
-export function useSleepTimer(now: NowPlaying | null, position: number) {
+export function useSleepTimer(now: NowPlaying | null) {
   const [mode, setMode] = useState<SleepMode>("off");
   const [endsAt, setEndsAt] = useState(0);
   const [tick, setTick] = useState(0);
@@ -26,9 +26,9 @@ export function useSleepTimer(now: NowPlaying | null, position: number) {
     armedTrack.current = m === "track" ? key : "";
   };
 
-  // 定时：每秒看一次
+  // 开着的时候每秒看一次（"本首完"也靠它刷新剩余时间，不用跟着播放进度每帧重算）
   useEffect(() => {
-    if (typeof mode !== "number") return;
+    if (mode === "off") return;
     const t = setInterval(() => setTick((x) => x + 1), 1000);
     return () => clearInterval(t);
   }, [mode]);
@@ -49,7 +49,7 @@ export function useSleepTimer(now: NowPlaying | null, position: number) {
 
   let left: number | null = null;
   if (typeof mode === "number") left = Math.max(0, endsAt - Date.now());
-  else if (mode === "track" && now) left = Math.max(0, now.durationMs - position);
+  else if (mode === "track" && now) left = Math.max(0, now.durationMs - livePosition(now));
 
   return { mode, start, left };
 }

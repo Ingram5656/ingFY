@@ -16,6 +16,7 @@ import { Presence } from "./Presence";
 import { invoke } from "@tauri-apps/api/core";
 import { PlayIcon } from "./Icons";
 import { t, tMsg } from "../lib/i18n";
+import { registerCache } from "../lib/cache";
 
 export type ShelfKind = "playlist" | "album";
 
@@ -647,6 +648,14 @@ function Spine({ side, name, sub }: { side: "l" | "r"; name: string; sub: string
 // ------------------------------------------------------------------ 书脊颜色
 
 const spineCache = new Map<string, { bg: string; ink: string }>();
+
+// 设置里点"清理缓存"：下次打开曲库、歌单时重新从 Spotify 拉
+registerCache(() => {
+  libraryCache.clear();
+  libraryLoadedAt.clear();
+  tracksCache.clear();
+  spineCache.clear();
+});
 const DEFAULT_SPINE = { bg: "#f1efe9", ink: "#1d1d1f" };
 
 /** 书脊用封面左边一条的平均色，像真的唱片封套；读不到（跨域被拦）就用米白 */
