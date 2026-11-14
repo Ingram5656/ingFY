@@ -5,7 +5,7 @@ import type { LightStyle } from "./Lights";
 import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
 import { COLOR_PRESETS, pickGradient } from "../lib/palette";
-import { lightPalette } from "../lib/settings";
+import { deskScale, lightPalette, lyricScale } from "../lib/settings";
 
 interface Props {
   settings: Settings;
@@ -36,10 +36,13 @@ const LIGHT_STYLES: { id: LightStyle; label: string }[] = [
   { id: "wave", label: "声波" },
 ];
 
-function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function Slider({ label, value, onChange, display }: { label: string; value: number; onChange: (v: number) => void; display?: string }) {
   return (
     <label className="st-slider">
-      <span>{label}</span>
+      <span>
+        {label}
+        {display && <em className="st-val">{display}</em>}
+      </span>
       <input type="range" min={0} max={100} value={value} onChange={(e) => onChange(Number(e.target.value))} />
     </label>
   );
@@ -239,6 +242,23 @@ export function SettingsPanel(p: Props) {
                   <span />
                 </button>
               </div>
+              <Slider
+                label="全屏歌词字号"
+                value={s.lyricSize}
+                display={`${Math.round(lyricScale(s.lyricSize) * 100)}%`}
+                onChange={(v) => update({ lyricSize: v })}
+              />
+              <Slider
+                label="桌面歌词字号"
+                value={s.desktopLyricSize}
+                display={`${Math.round(deskScale(s.desktopLyricSize) * 100)}%`}
+                onChange={(v) => update({ desktopLyricSize: v })}
+              />
+              {(s.lyricSize !== 50 || s.desktopLyricSize !== 50) && (
+                <button className="st-link" onClick={() => update({ lyricSize: 50, desktopLyricSize: 50 })}>
+                  恢复默认字号
+                </button>
+              )}
             </section>
           </div>
 

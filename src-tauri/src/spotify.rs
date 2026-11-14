@@ -791,6 +791,24 @@ async fn playlist_list(access: &str, id: &str, ctx: &str) -> Result<NowList, Str
     })
 }
 
+/// 曲库里点开某张专辑 / 某个歌单（含"已点赞的歌曲"）时，读取里面的歌
+pub async fn context_list(access: &str, uri: &str) -> Result<NowList, String> {
+    if uri.ends_with(":collection") {
+        return liked_list(access, uri).await;
+    }
+    match split_uri(uri) {
+        Some(("album", id)) => album_list(access, id, uri).await,
+        Some(("playlist", id)) => playlist_list(access, id, uri).await.map_err(|e| {
+            if e.contains("拒绝") {
+                "Spotify 不再开放别人歌单里的曲目，点封面上的播放按钮可以直接听".to_string()
+            } else {
+                e
+            }
+        }),
+        _ => Err("这里不支持查看曲目".to_string()),
+    }
+}
+
 /// 已点赞的歌曲（按点赞时间从新到旧，最多 500 首）
 async fn liked_list(access: &str, ctx: &str) -> Result<NowList, String> {
     let mut tracks = Vec::new();

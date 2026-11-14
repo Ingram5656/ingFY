@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type WheelEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type WheelEvent } from "react";
 import type { LyricLine } from "../lib/types";
 import { Karaoke } from "./Karaoke";
 import { FitText } from "./FitText";
@@ -84,7 +84,7 @@ export function LyricScroller({ lines, index, progress, onSeek, showTranslation 
   const idleTimer = useRef<ReturnType<typeof setTimeout>>();
   const focus = Math.max(index, 0);
 
-  useLayoutEffect(() => {
+  const measure = useCallback(() => {
     const track = trackRef.current;
     const el = lineRefs.current[focus];
     if (!track || !el) return;
@@ -92,7 +92,19 @@ export function LyricScroller({ lines, index, progress, onSeek, showTranslation 
     // 当前行的中线对齐到可视区域 40% 的高度
     const anchor = viewport.clientHeight * 0.4;
     setOffset(anchor - (el.offsetTop + el.offsetHeight / 2));
-  }, [focus, lines, showTranslation]);
+  }, [focus]);
+
+  useLayoutEffect(measure, [measure, lines, showTranslation]);
+
+  // 字号、版面宽度变了（调字号、切换居中布局）时重新对齐当前句
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(track);
+    ro.observe(track.parentElement!);
+    return () => ro.disconnect();
+  }, [measure]);
 
   // 换歌时退出手动模式
   useEffect(() => {

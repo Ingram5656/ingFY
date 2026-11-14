@@ -185,6 +185,12 @@ async fn spotify_now_list(app: AppHandle) -> Result<Option<spotify::NowList>, St
 }
 
 #[tauri::command]
+async fn spotify_context_tracks(app: AppHandle, uri: String) -> Result<spotify::NowList, String> {
+    let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
+    spotify::context_list(&token, &uri).await
+}
+
+#[tauri::command]
 async fn spotify_play_track(app: AppHandle, context_uri: Option<String>, track_uri: String) -> Result<(), String> {
     let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
     spotify::play_track(&token, context_uri.as_deref(), &track_uri).await
@@ -290,6 +296,7 @@ pub fn run() {
             spotify_play,
             spotify_now_list,
             spotify_play_track,
+            spotify_context_tracks,
             set_desktop_locked,
             set_desktop_visible
         ])

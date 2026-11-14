@@ -24,6 +24,13 @@ export interface Settings {
   lyricColor: string;
   /** 有翻译时在歌词下面显示翻译 */
   showTranslation: boolean;
+  /** 全屏歌词字号 0~100，50 是默认大小（实际缩放 0.7~1.3 倍） */
+  lyricSize: number;
+  /** 桌面歌词字号 0~100，50 是默认大小（实际缩放 0.8~1.2 倍） */
+  desktopLyricSize: number;
+  /** 歌词界面：显示歌词 / 显示专辑封面和信息。两个都关时只剩拾音灯；拾音灯关着时这两项不能改，强制都显示 */
+  showLyrics: boolean;
+  showAlbum: boolean;
   /** 拾音灯颜色：取自专辑，或者固定的起止色渐变 */
   lightColorMode: "album" | "custom";
   lightA: string;
@@ -55,6 +62,10 @@ export const DEFAULT_SETTINGS: Settings = {
   lyricColorMode: "album",
   lyricColor: "#FFFFFF",
   showTranslation: true,
+  lyricSize: 50,
+  desktopLyricSize: 50,
+  showLyrics: true,
+  showAlbum: true,
   lightColorMode: "album",
   lightA: "#FF5FA2",
   lightB: "#7B5CFF",
@@ -166,8 +177,13 @@ export function useApplySettings(s: Settings) {
     root.style.setProperty("--bg-blur", `${(s.bgBlur / 100) * 60}px`);
     root.style.setProperty("--bg-dim", String((s.bgDim / 100) * 0.75));
     root.classList.toggle("calm", !s.beat);
+    root.style.setProperty("--lyric-size", String(lyricScale(s.lyricSize)));
+    root.style.setProperty("--desk-size", String(deskScale(s.desktopLyricSize)));
   }, [s]);
 }
+
+export const lyricScale = (v: number) => 0.7 + (v / 100) * 0.6;
+export const deskScale = (v: number) => 0.8 + (v / 100) * 0.4;
 
 /** 拾音灯实际使用的颜色：取自专辑，或者用户定的起止色渐变 */
 export function lightPalette(s: Settings, album: string[]): string[] {

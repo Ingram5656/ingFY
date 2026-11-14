@@ -115,7 +115,7 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   mask-image: linear-gradient(transparent 0%, #000 14%, #000 82%, transparent 100%); }
 .scroller-track { position: absolute; left: 0; right: 0; top: 0;
   transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; }
-.scroll-line { margin: 0; padding: 10px 0; font-size: 64px; font-weight: 900; line-height: 1.18;
+.scroll-line { margin: 0; padding: 10px 0; font-size: calc(64px * var(--lyric-size, 1)); font-weight: 900; line-height: 1.18;
   transform-origin: 0 50%; overflow-wrap: anywhere;
   --k-sung: rgba(255,255,255, var(--alpha)); --k-rest: rgba(255,255,255, var(--alpha)); --line-on: 0;
   filter: blur(var(--blur)) drop-shadow(0 0 16px rgba(255,255,255,0)); transform: scale(var(--scale));
@@ -307,7 +307,7 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   display: flex; flex-direction: column; gap: 2px; cursor: grab; transition: background 0.3s, border-color 0.3s, box-shadow 0.3s; }
 /* 两行字号一致。正在唱的一行和全屏歌词一样：放大、变亮、唱到的字上浮；另一行缩小变暗。
    行高留足，给中文字形和上浮动画留空间；只在水平方向裁切，竖直方向不裁。 */
-.dl-line { position: relative; flex-shrink: 0; margin: 0; padding: 0.12em 0 0.04em; font-size: 38px; font-weight: 900; line-height: 1.3;
+.dl-line { position: relative; flex-shrink: 0; margin: 0; padding: 0.12em 0 0.04em; font-size: calc(38px * var(--desk-size, 1)); font-weight: 900; line-height: 1.3;
   white-space: nowrap; overflow-x: clip; overflow-y: visible; text-overflow: ellipsis;
   --k-sung: rgba(255,255,255,0.5); --k-rest: rgba(255,255,255,0.5); --line-on: 0;
   color: var(--k-sung); transform: scale(0.8); transform-origin: 0 60%;
@@ -400,6 +400,8 @@ html.calm .light, html.calm .dl-glow span { animation-name: breathe !important; 
 
 .st-slider { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: rgba(255,255,255,0.82); }
 .st-slider input { width: 100%; accent-color: #fff; height: 24px; }
+.st-slider > span { display: flex; justify-content: space-between; align-items: baseline; }
+.st-val { font-style: normal; font-size: 13px; color: rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }
 
 .st-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px; box-sizing: border-box;
   border: 1px solid rgba(255,255,255,0.22); border-radius: 18px; background: rgba(255,255,255,0.06); cursor: pointer; text-align: left; }
@@ -638,3 +640,58 @@ html.calm .light, html.calm .dl-glow span { animation-name: breathe !important; 
 .liked-cover svg { width: 38%; height: 38%; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.25)); }
 .nl-cover .liked-cover { border-radius: 10px; overflow: hidden; }
 span.nl-cover { position: relative; overflow: hidden; display: block; }
+
+/* ===================== 曲库：抽出唱片后展开的曲目面板 ===================== */
+.shelf-tracks { position: absolute; z-index: 3; left: 768px; top: 140px; width: 520px; height: 610px; box-sizing: border-box;
+  display: flex; flex-direction: column; border-radius: 28px; padding: 18px 10px 10px 18px;
+  transform-origin: 0% 50%; animation: trk-in 0.5s 0.08s var(--ease-apple) both; }
+@keyframes trk-in { from { opacity: 0; transform: translateX(-48px) scale(0.94); filter: blur(10px); } to { opacity: 1; transform: none; filter: none; } }
+.trk-head { display: flex; align-items: flex-start; gap: 12px; padding: 0 8px 14px 4px; border-bottom: 1px solid rgba(255,255,255,0.14); }
+.trk-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.trk-head small { font-size: 12px; color: rgba(255,255,255,0.6); }
+.trk-head strong { font-size: 22px; font-weight: 900; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trk-head span { font-size: 13px; color: rgba(255,255,255,0.7); }
+.trk-row-in { animation: trk-row 0.4s var(--ease-apple) both; }
+@keyframes trk-row { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* 读取中：几条闪动的占位条 */
+.trk-skel li { padding: 10px; }
+.trk-skel li span { display: block; height: 36px; border-radius: 10px; background: rgba(255,255,255,0.12); animation: trk-pulse 1.2s ease-in-out infinite; }
+@keyframes trk-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+.shelf.is-dragging { cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) { .shelf-tracks, .trk-row-in { animation: none; } }
+
+
+/* ===================== 唱片模式：拖唱片换歌 ===================== */
+.vinyl-stage { transform: translateX(var(--dx, 0px)) rotate(var(--droll, 0deg)); transition: transform 0.55s var(--ease-spring), opacity 0.3s ease; touch-action: none; }
+.vinyl-stage.can-drag { cursor: grab; }
+.vinyl-stage.is-dragging { cursor: grabbing; transition: none; }
+.vinyl-stage.is-flung { transition: transform 0.38s cubic-bezier(0.4, 0, 1, 1), opacity 0.38s ease; opacity: 0; }
+/* 拖动时高光和歌词标签跟着唱片走 */
+.vinyl-stage.is-dragging ~ .vinyl-sheen, .vinyl-stage.is-flung ~ .vinyl-sheen { opacity: 0; }
+.vinyl-sheen { transition: opacity 0.3s ease; }
+.vinyl-stage.is-dragging ~ .vinyl-lyric, .vinyl-stage.is-flung ~ .vinyl-lyric { opacity: 0; }
+
+
+/* ===================== 歌词界面：显示内容开关 + 居中布局 ===================== */
+.seg-vis { display: flex; gap: 2px; }
+.seg .seg-vis-btn { width: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.55); transition: background-color 0.3s var(--ease-apple), color 0.3s ease, transform 0.18s var(--ease-apple); }
+.seg .seg-vis-btn.is-on { background: rgba(255,255,255,0.22); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,0.35); }
+.seg .seg-vis-btn:not(.is-on) svg { opacity: 0.8; }
+.seg .seg-vis-btn:active { transform: scale(0.9); }
+.seg .seg-vis-btn[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
+.seg .seg-vis-btn[aria-disabled="true"]:active { transform: none; }
+
+/* 专辑和歌词两块：显隐、挪到正中都带过渡 */
+.fs-track, .fs-lyrics { transition: transform 0.7s var(--ease-apple), opacity 0.45s ease, filter 0.5s ease; }
+.fs-track.is-hidden { opacity: 0; transform: translateX(-70px) scale(0.94); filter: blur(12px); pointer-events: none; }
+.fs-lyrics.is-hidden { opacity: 0; transform: translateX(70px); filter: blur(12px); pointer-events: none; }
+/* 只显示专辑：封面和信息挪到正中、放大一点 */
+.fs-track.is-solo { transform: translate(454px, 10px) scale(1.12); align-items: center; text-align: center; }
+.fs-track.is-solo .title { width: 100%; }
+/* 只显示歌词：整块挪到正中，每句居中对齐，放大时从中间放大 */
+.fs-lyrics.is-solo { transform: translateX(-230px); }
+.fs-lyrics.is-solo .scroll-line { text-align: center; transform-origin: 50% 50%; }
+.fs-lyrics.is-solo .hint { left: 0; right: 0; text-align: center; }
+.fs-lyrics.is-solo .plain { text-align: center; }
+@media (prefers-reduced-motion: reduce) { .fs-track, .fs-lyrics { transition-duration: 0.01s; } }

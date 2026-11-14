@@ -13,9 +13,11 @@ import {
   VINYL_LOOKS,
   VINYL_PRESETS,
   discLook,
+  markDirection,
   seedFrom,
   takeDirection,
 } from "../lib/vinyl";
+import { mediaControl } from "../lib/player";
 
 // ---------- 单张唱片 ----------
 
@@ -123,6 +125,52 @@ export function VinylView(p: Props) {
   const seed = random ? cur.randomSeed : seedFrom(key || "nige");
   const snap: Snapshot = { look, seed, a: colors[0], b: colors[1], art: p.artworkUrl, title: now?.title ?? "", artist: now?.artist ?? "" };
 
+  // ---- 拖唱片换歌：按住唱片左右拖，像在唱机上推开一张唱片 ----
+  // 往左推过一定距离 = 下一首，往右 = 上一首；没推够就弹回来
+  const [discDrag, setDiscDrag] = useState<{ x: number; flung: 0 | 1 | -1 } | null>(null);
+  const discStart = useRef<{ x: number; id: number } | null>(null);
+  /** 唱片是被拖出去的：换歌时旧唱片已经不在台上，不再播放"旧唱片滑出"的动画 */
+  const flung = useRef(false);
+  const flingTimer = useRef<ReturnType<typeof setTimeout>>();
+  const stageScale = (el: HTMLElement) => {
+    const stage = el.closest(".fs-stage") as HTMLElement | null;
+    return stage ? stage.getBoundingClientRect().width / 1440 : 1;
+  };
+  const discDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || phase !== "idle" || !now) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    discStart.current = { x: e.clientX, id: e.pointerId };
+    setDiscDrag({ x: 0, flung: 0 });
+  };
+  const discMove = (e: PointerEvent<HTMLDivElement>) => {
+    const st = discStart.current;
+    if (!st || st.id !== e.pointerId) return;
+    const dx = (e.clientX - st.x) / stageScale(e.currentTarget);
+    setDiscDrag({ x: dx, flung: 0 });
+  };
+  const discUp = (e: PointerEvent<HTMLDivElement>) => {
+    const st = discStart.current;
+    discStart.current = null;
+    if (!st) return;
+    const dx = (e.clientX - st.x) / stageScale(e.currentTarget);
+    if (Math.abs(dx) < 150) {
+      setDiscDrag(null); // 没推够：弹回原位
+      return;
+    }
+    const d: 1 | -1 = dx < 0 ? 1 : -1;
+    flung.current = true;
+    setDiscDrag({ x: dx, flung: d });
+    markDirection(d);
+    void mediaControl(d > 0 ? "next" : "previous");
+    // 播放器没换歌（比如"上一首"在歌曲中段只会回到开头）：唱片转回来
+    clearTimeout(flingTimer.current);
+    flingTimer.current = setTimeout(() => {
+      flung.current = false;
+      setDiscDrag(null);
+    }, 1600);
+  };
+  useEffect(() => () => clearTimeout(flingTimer.current), []);
+
   // 换歌：抬针 → 旧唱片滑出、新唱片滑入 → 落针
   useEffect(() => {
     if (key === cur.key) return;
@@ -132,7 +180,17 @@ export function VinylView(p: Props) {
       return;
     }
     setDir(takeDirection());
-    setOutgoing(lastSnap.current);
+    // 拖出去换的歌：旧唱片已经被推走了，只让新唱片从另一边滑进来
+    if (flung.current) {
+      flung.current = false;
+      clearTimeout(flingTimer.current);
+      // 先不带过渡地瞬间归位（这时台上是空的），下一帧再恢复正常状态
+      setDiscDrag({ x: 0, flung: 0 });
+      requestAnimationFrame(() => setDiscDrag(null));
+      setOutgoing(null);
+    } else {
+      setOutgoing(lastSnap.current);
+    }
     setPhase("lift");
     setFastArm(true);
     setCur(next);
@@ -211,9 +269,10 @@ export function VinylView(p: Props) {
   };
 
   const dragging = dragAngle !== null;
-  const angle = dragging ? dragAngle : playing && settled ? ARM_OUTER + (ARM_INNER - ARM_OUTER) * progress : ARM_REST;
+  // 推唱片时唱针先抬起来回到架上
+  const angle = dragging ? dragAngle : playing && settled && !discDrag ? ARM_OUTER + (ARM_INNER - ARM_OUTER) * progress : ARM_REST;
   // 拖动时唱针被"拿起来"了，阴影也变大
-  const lifted = dragging || !(playing && settled);
+  const lifted = dragging || !!discDrag || !(playing && settled);
 
   const labelFor = (d: Snapshot) => {
     if (s.vinylLabel === "lyric") return null; // 歌词标签单独画在上层，不跟着转
@@ -238,7 +297,22 @@ export function VinylView(p: Props) {
     <>
       <div className="vinyl-platter" aria-hidden="true" />
 
-      <div className="vinyl-stage" aria-hidden="true">
+      <div
+        className={`vinyl-stage${discDrag ? (discDrag.flung ? " is-flung" : " is-dragging") : ""}${now && settled ? " can-drag" : ""}`}
+        aria-hidden="true"
+        title={now ? "左右拖动唱片换歌" : undefined}
+        style={
+          {
+            // 唱片在台上滚动：平移的同时按周长转动，往外推过阈值后继续滑出画面
+            "--dx": `${discDrag ? (discDrag.flung ? -discDrag.flung * 1100 : discDrag.x) : 0}px`,
+            "--droll": `${discDrag ? ((discDrag.flung ? -discDrag.flung * 1100 : discDrag.x) / (RECORD / 2)) * (180 / Math.PI) : 0}deg`,
+          } as CSSProperties
+        }
+        onPointerDown={discDown}
+        onPointerMove={discMove}
+        onPointerUp={discUp}
+        onPointerCancel={discUp}
+      >
         {outgoing && (
           <div className={`vinyl-slot${phase === "swap" ? (dir > 0 ? " out-left" : " out-right") : ""}`}>
             <Disc look={outgoing.look} seed={outgoing.seed} a={outgoing.a} b={outgoing.b} size={RECORD} spinning={false} label={labelFor(outgoing)} />

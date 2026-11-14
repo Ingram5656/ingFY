@@ -1,4 +1,17 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type WheelEvent,
+} from "react";
+import { formatTime } from "../lib/player";
 import { invoke } from "@tauri-apps/api/core";
 import { PlayIcon } from "./Icons";
 
@@ -28,6 +41,8 @@ interface Props {
 const libraryCache = new Map<ShelfKind, ShelfItem[]>();
 
 const SPACING = 116; // 相邻两张在架子上的间距（设计稿像素）
+const PICKED_X = -250; // 抽出来的唱片挪到的位置
+const PICKED_CENTER = (PICKED_X * 1500) / (1500 - 180); // 透视后它在屏幕上的中心（perspective 1500，往前推 180）
 const RENDER_RANGE = 9; // 只画当前位置左右各 9 张
 const WHEEL_STEP = 90; // 滚轮累计多少算翻一张：普通鼠标一格（100）正好翻一张，触控板慢慢滑也能翻
 
@@ -125,6 +140,16 @@ export function LibraryView(p: Props) {
     }
   };
 
+  const playTrack = async (it: ShelfItem, t: ListTrack) => {
+    setToast({ text: `正在打开《${t.name}》…`, kind: "ok" });
+    try {
+      await invoke("spotify_play_track", { contextUri: it.uri, trackUri: t.uri });
+      setToast({ text: `开始播放《${t.name}》`, kind: "ok" });
+    } catch (e) {
+      setToast({ text: String(e), kind: "error" });
+    }
+  };
+
   const mineLabel = p.kind === "playlist" ? "我的歌单" : "我的专辑";
   const noun = p.kind === "playlist" ? "歌单" : "专辑";
 
@@ -196,7 +221,7 @@ export function LibraryView(p: Props) {
           )}
         </div>
       ) : (
-        <Shelf key={`${p.kind}|${scope}|${q}`} items={shown} onPlay={play} />
+        <Shelf key={`${p.kind}|${scope}|${q}`} items={shown} onPlay={play} onPlayTrack={playTrack} />
       )}
 
       {toast && (
@@ -210,7 +235,15 @@ export function LibraryView(p: Props) {
 
 // ------------------------------------------------------------------ 架子
 
-function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) => void }) {
+function Shelf({
+  items,
+  onPlay,
+  onPlayTrack,
+}: {
+  items: ShelfItem[];
+  onPlay: (it: ShelfItem) => void;
+  onPlayTrack: (it: ShelfItem, t: ListTrack) => void;
+}) {
   const n = items.length;
   const [pos, setPos] = useState(0);
   const [picked, setPickedRaw] = useState<number | null>(null);
@@ -223,6 +256,7 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
     clearTimeout(pickTimer.current);
     pickTimer.current = setTimeout(() => setPickAnim(false), 550);
   }, []);
+  const shelfRef = useRef<HTMLDivElement>(null);
   const target = useRef(0);
   const posRef = useRef(0);
   const raf = useRef(0);
@@ -279,6 +313,58 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
     }
   };
 
+  // ---- 鼠标拖动：按住左右拖，唱片跟着手走；松手按甩出去的速度多滑几张再停 ----
+  const drag = useRef<{ x: number; startPos: number; lastX: number; lastT: number; v: number; moved: boolean; id: number } | null>(null);
+  const suppressClick = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const stageK = () => {
+    const r = shelfRef.current?.getBoundingClientRect();
+    return r ? r.width / 1440 : 1;
+  };
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !n) return;
+    if ((e.target as HTMLElement).closest(".rec-play")) return;
+    drag.current = { x: e.clientX, startPos: posRef.current, lastX: e.clientX, lastT: performance.now(), v: 0, moved: false, id: e.pointerId };
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    const dx = (e.clientX - d.x) / stageK();
+    if (!d.moved) {
+      if (Math.abs(dx) < 6) return;
+      d.moved = true;
+      setDragging(true);
+      shelfRef.current?.setPointerCapture(e.pointerId);
+      cancelAnimationFrame(raf.current);
+      if (picked !== null) setPicked(null);
+    }
+    const now = performance.now();
+    const dt = Math.max(1, now - d.lastT);
+    // 速度做一点平滑，单位：张 / 毫秒
+    d.v = d.v * 0.6 + (-(e.clientX - d.lastX) / stageK() / SPACING / dt) * 0.4;
+    d.lastX = e.clientX;
+    d.lastT = now;
+    // 拖到两头会有一点阻尼，不会一下子拖出架子
+    let p = d.startPos - dx / SPACING;
+    if (p < 0) p = p * 0.3;
+    if (p > n - 1) p = n - 1 + (p - (n - 1)) * 0.3;
+    posRef.current = p;
+    target.current = p;
+    setPos(p);
+  };
+  const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d || !d.moved) return;
+    setDragging(false);
+    suppressClick.current = true;
+    shelfRef.current?.releasePointerCapture?.(e.pointerId);
+    // 甩出去：速度 × 250ms 作为惯性距离，最多 8 张
+    const fling = Math.max(-8, Math.min(8, d.v * 250));
+    target.current = Math.max(0, Math.min(n - 1, Math.round(posRef.current + fling)));
+    animate();
+  };
+
   const center = Math.round(pos);
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "ArrowRight") goTo(center + 1);
@@ -297,8 +383,12 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
   };
   // 点击按位置算是哪一张：正中间的唱片只露一条很窄的书脊，浏览器对这种侧着的 3D 面点不中，
   // 所以不靠元素命中，而是把点击的横坐标换算成架子上的第几张。
-  const shelfRef = useRef<HTMLDivElement>(null);
   const onShelfClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (suppressClick.current) {
+      // 刚拖完松手，不算点击
+      suppressClick.current = false;
+      return;
+    }
     const el = shelfRef.current;
     if (!el || !n) return;
     const r = el.getBoundingClientRect();
@@ -306,8 +396,9 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
     const x = (e.clientX - (r.left + r.width / 2)) / k;
     const y = (e.clientY - r.top) / k;
     if (picked !== null) {
-      // 点抽出来的那张本身不动（播放按钮自己处理），点别处放回去
-      if (Math.abs(x) > 300 || y < 120 || y > 760) setPicked(null);
+      // 抽出来的那张挪到了左边（中心约在 -284，宽约 590），点它本身不动；
+      // 右边的曲目面板自己处理点击；点别处把唱片放回去
+      if (Math.abs(x - PICKED_CENTER) > 300 || y < 120 || y > 760) setPicked(null);
       return;
     }
     if (y < 120 || y > 760) return;
@@ -320,16 +411,21 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
   for (let i = from; i <= to; i++) visible.push(i);
 
   return (
+    <>
     <div
-      className={`shelf${picked !== null ? " has-picked" : ""}${pickAnim ? " is-picking" : ""}`}
+      className={`shelf${picked !== null ? " has-picked" : ""}${pickAnim ? " is-picking" : ""}${dragging ? " is-dragging" : ""}`}
       onWheel={onWheel}
       onKeyDown={onKey}
       tabIndex={0}
       role="listbox"
-      aria-label="唱片架，滚轮左右翻"
+      aria-label="唱片架，滚轮或拖动左右翻"
       aria-activedescendant={n ? `rec-${center}` : undefined}
       ref={shelfRef}
       onClick={onShelfClick}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
     >
       <div className="shelf-row">
         {visible.map((i) => (
@@ -345,6 +441,11 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
         ))}
       </div>
     </div>
+    {/* 曲目面板放在架子外面：架子有左右渐隐的遮罩，放里面毛玻璃会只模糊到架子里的东西 */}
+    {picked !== null && items[picked] && (
+      <ShelfTracks key={items[picked].uri} item={items[picked]} onPlayTrack={onPlayTrack} onClose={() => setPicked(null)} />
+    )}
+    </>
   );
 }
 
@@ -368,7 +469,8 @@ const Record = memo(function Record({ id, item, d, picked, pickedSide, onPlay }:
   // 不会在经过中间时整张翻面，也就不会和旁边的唱片穿插。右半边看到的是封套背面，背面也印着封面。
   const rot = 90 + Math.max(-4, Math.min(4, d)) * 6;
   const style = {
-    "--x": `${d * SPACING + pickedSide * 260}px`,
+    // 抽出来的那张挪到左边给曲目面板让位；其余的往两边让开（右边让得更远，藏到面板后面）
+    "--x": picked ? `${PICKED_X}px` : `${d * SPACING + (pickedSide < 0 ? -560 : pickedSide > 0 ? 900 : 0)}px`,
     "--rot": picked ? "0deg" : `${rot}deg`,
     "--z": picked ? "180px" : `${-Math.min(ad, 6) * 14}px`,
     "--blur": `${Math.max(0, ad - 5.5) * 3}px`,
@@ -417,6 +519,89 @@ const Record = memo(function Record({ id, item, d, picked, pickedSide, onPlay }:
     </div>
   );
 });
+
+// ------------------------------------------------------------------ 曲目面板
+
+export interface ListTrack {
+  uri: string;
+  name: string;
+  artists: string;
+  durationMs: number;
+}
+
+interface ContextList {
+  title: string;
+  subtitle: string;
+  tracks: ListTrack[];
+}
+
+const tracksCache = new Map<string, ContextList>();
+
+/** 抽出唱片后在右边展开的曲目列表：点哪首从哪首开始播 */
+function ShelfTracks({ item, onPlayTrack, onClose }: { item: ShelfItem; onPlayTrack: (it: ShelfItem, t: ListTrack) => void; onClose: () => void }) {
+  const [data, setData] = useState<ContextList | null>(() => tracksCache.get(item.uri) ?? null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tracksCache.has(item.uri)) return;
+    let alive = true;
+    invoke<ContextList>("spotify_context_tracks", { uri: item.uri })
+      .then((d) => {
+        tracksCache.set(item.uri, d);
+        if (alive) setData(d);
+      })
+      .catch((e) => alive && setError(String(e)));
+    return () => {
+      alive = false;
+    };
+  }, [item.uri]);
+
+  const noun = item.kind === "album" ? "专辑" : "歌单";
+  return (
+    <section className="shelf-tracks glass" aria-label={`${item.name}的曲目`}>
+      <header className="trk-head">
+        <div>
+          <small>{noun}曲目</small>
+          <strong>{item.name}</strong>
+          <span>{data ? `${data.tracks.length} 首` : item.subtitle}</span>
+        </div>
+        <button className="nl-close" aria-label="收起" onClick={onClose}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </header>
+      {error ? (
+        <p className="nl-hint">{error}</p>
+      ) : !data ? (
+        <ol className="nl-list trk-skel" aria-busy="true">
+          {Array.from({ length: 8 }, (_, i) => (
+            <li key={i}>
+              <span style={{ animationDelay: `${i * 60}ms` }} />
+            </li>
+          ))}
+        </ol>
+      ) : data.tracks.length === 0 ? (
+        <p className="nl-hint">这个{noun}里还没有歌</p>
+      ) : (
+        <ol className="nl-list">
+          {data.tracks.map((t, i) => (
+            <li key={`${t.uri}-${i}`} style={{ animationDelay: `${Math.min(i, 12) * 28}ms` }} className="trk-row-in">
+              <button className="nl-row" onClick={() => onPlayTrack(item, t)}>
+                <span className="nl-idx">{i + 1}</span>
+                <span className="nl-text">
+                  <span className="nl-name">{t.name}</span>
+                  <span className="nl-artist">{t.artists}</span>
+                </span>
+                <span className="nl-dur">{t.durationMs ? formatTime(t.durationMs) : ""}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
 
 function Cover({ item }: { item: ShelfItem }) {
   if (item.image) return <img src={item.image} alt="" draggable={false} />;

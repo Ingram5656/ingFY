@@ -114,6 +114,10 @@ export default function FullScreen() {
 
   const vinyl = settings.viewMode === "vinyl";
   const library = settings.viewMode === "playlists" || settings.viewMode === "albums";
+  // 歌词界面显示什么：拾音灯关着时两样都显示（开关也锁住）
+  const showLyrics = !settings.lightsOn || settings.showLyrics;
+  const showAlbum = !settings.lightsOn || settings.showAlbum;
+  const layout = showLyrics && showAlbum ? "both" : showAlbum ? "album" : showLyrics ? "lyrics" : "none";
   // 歌词 ⇄ 唱片：新旧两层同时淡入淡出，320ms 内完成
   const modeLayers = useCrossfade(settings.viewMode, 320);
   // 灯效切换：旧灯效收起、新灯效展开
@@ -204,6 +208,32 @@ export default function FullScreen() {
                 </button>
               ))}
             </div>
+            <span className="seg-sep" aria-hidden="true" />
+            {/* 歌词、专辑信息的显示开关。拾音灯关着时不能关（不然画面就空了），强制都显示 */}
+            <div className="seg-vis" role="group" aria-label="显示内容">
+              {(
+                [
+                  ["showLyrics", "歌词", <LyricsGlyph key="l" />],
+                  ["showAlbum", "专辑信息", <AlbumGlyph key="a" />],
+                ] as const
+              ).map(([k, label, icon]) => {
+                const on = !settings.lightsOn || settings[k];
+                return (
+                  <button
+                    key={k}
+                    className={`seg-vis-btn${on ? " is-on" : ""}`}
+                    role="switch"
+                    aria-checked={on}
+                    aria-disabled={!settings.lightsOn}
+                    aria-label={`${on ? "隐藏" : "显示"}${label}`}
+                    title={settings.lightsOn ? `${on ? "隐藏" : "显示"}${label}` : `打开拾音灯后才能隐藏${label}`}
+                    onClick={() => settings.lightsOn && update({ [k]: !settings[k] } as Partial<typeof settings>)}
+                  >
+                    {icon}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           )}
           <div className="pill glass">
@@ -286,7 +316,7 @@ export default function FullScreen() {
                       <Lights palette={lightPalette(settings, palette)} style={l.key} playing={!!now?.playing} reactive={settings.beat} />
                     </div>
                   ))}
-                <section className="fs-track">
+                <section className={`fs-track${showAlbum ? "" : " is-hidden"}${layout === "album" ? " is-solo" : ""}`} aria-hidden={!showAlbum || undefined}>
                   {artwork ? <img className="cover" src={artwork.dataUrl} alt="" /> : <div className="cover cover--empty" />}
                   <FitText className="title" fitKey={now?.title ?? ""} minScale={0.7} wrap={false}>
                     {now?.title || "没有在播放"}
@@ -301,7 +331,7 @@ export default function FullScreen() {
                   )}
                 </section>
 
-                <section className="fs-lyrics" aria-live="polite">
+                <section className={`fs-lyrics${showLyrics ? "" : " is-hidden"}${layout === "lyrics" ? " is-solo" : ""}`} aria-live="polite" aria-hidden={!showLyrics || undefined}>
                   {lyrics.status === "loading" && <p className="hint">正在找歌词…</p>}
                   {(lyrics.status === "none" || lyrics.status === "error") && now && (
                     <p className="hint">{lyrics.status === "error" ? "歌词加载失败，检查一下网络" : lyrics.instrumental ? "纯音乐，没有歌词" : "没找到这首歌的歌词"}</p>
@@ -420,5 +450,23 @@ export default function FullScreen() {
         )}
       </div>
     </div>
+  );
+}
+
+function LyricsGlyph() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 6.5h16M4 12h11M4 17.5h14" />
+    </svg>
+  );
+}
+
+function AlbumGlyph() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="0.8" fill="currentColor" />
+    </svg>
   );
 }
