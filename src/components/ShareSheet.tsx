@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { LyricLine, NowPlaying } from "../lib/types";
 import { Sheet } from "./Sheet";
+import { t, tMsg } from "../lib/i18n";
 
 interface Props {
   now: NowPlaying;
@@ -56,9 +57,9 @@ export function ShareSheet({ now, lines, index, artworkUrl, palette, onClose }: 
     try {
       const blob = await (await fetch(url)).blob();
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      setMsg({ text: "已复制，可以直接粘贴到聊天里" });
+      setMsg({ text: t("已复制，可以直接粘贴到聊天里") });
     } catch {
-      setMsg({ text: "复制失败，试试保存图片" });
+      setMsg({ text: t("复制失败，试试保存图片") });
     } finally {
       setBusy(false);
     }
@@ -68,20 +69,20 @@ export function ShareSheet({ now, lines, index, artworkUrl, palette, onClose }: 
     setBusy(true);
     try {
       const path = await invoke<string>("save_share_image", { pngBase64: url });
-      setMsg({ text: "已保存到 图片\\ingfy", path });
+      setMsg({ text: t("已保存到 图片\\ingfy"), path });
     } catch (e) {
-      setMsg({ text: String(e) });
+      setMsg({ text: tMsg(String(e)) });
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Sheet title="分享歌词" subtitle={`选 1~${MAX_LINES} 句，生成一张图片`} wide onClose={onClose}>
+    <Sheet title={t("分享歌词")} subtitle={t("选 1~{n} 句，生成一张图片", { n: MAX_LINES })} wide onClose={onClose}>
       <div className="share">
-        <div className="share-preview">{url ? <img src={url} alt="歌词卡片预览" /> : <span className="share-loading" />}</div>
+        <div className="share-preview">{url ? <img src={url} alt={t("歌词卡片预览")} /> : <span className="share-loading" />}</div>
         <div className="share-side">
-          <ol className="nl-list share-lines" aria-label="选择歌词">
+          <ol className="nl-list share-lines" aria-label={t("选择歌词")}>
             {usable.map((l) => {
               const on = picked.includes(l.i);
               return (
@@ -96,10 +97,10 @@ export function ShareSheet({ now, lines, index, artworkUrl, palette, onClose }: 
           </ol>
           <div className="share-actions">
             <button className="st-btn" onClick={copy} disabled={!url || busy}>
-              复制图片
+              {t("复制图片")}
             </button>
             <button className="st-btn st-btn--primary" onClick={save} disabled={!url || busy}>
-              保存图片
+              {t("保存图片")}
             </button>
           </div>
           {msg && (
@@ -107,7 +108,7 @@ export function ShareSheet({ now, lines, index, artworkUrl, palette, onClose }: 
               {msg.text}
               {msg.path && (
                 <button className="st-link" onClick={() => invoke("reveal_path", { path: msg.path })}>
-                  打开文件夹
+                  {t("打开文件夹")}
                 </button>
               )}
             </p>

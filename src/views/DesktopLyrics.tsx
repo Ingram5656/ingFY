@@ -11,6 +11,7 @@ import { mediaControl, useAlbumPalette, useLyrics, usePlayer, usePosition } from
 import { pickGradient } from "../lib/palette";
 import { lightPalette, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
+import { t, useLang } from "../lib/i18n";
 
 /**
  * 桌面歌词：两行 KTV 式交错。偶数行在上、左对齐；奇数行在下、右对齐。
@@ -18,6 +19,7 @@ import { useSpotify } from "../lib/spotify";
  * 整个玻璃条可以拖动（data-tauri-drag-region），锁定后鼠标穿透。
  */
 export default function DesktopLyrics() {
+  useLang(); // 切换语言时整页重绘
   const { now, artwork, desktopLocked } = usePlayer();
   const position = usePosition(now);
   const pref = useLyricPref(now?.title ? trackKey(now) : "");
@@ -71,7 +73,7 @@ export default function DesktopLyrics() {
     bottom = now.artist;
   } else {
     top = "ingfy";
-    bottom = "等待播放";
+    bottom = t("等待播放");
   }
 
   const karaokeTop = activeTop && lyrics.synced;
@@ -80,23 +82,23 @@ export default function DesktopLyrics() {
   return (
     <div className={`dl${desktopLocked ? " is-locked" : ""}`}>
       <div className="dl-toolbar glass">
-        <button className="ibtn" aria-label="上一首" onClick={() => mediaControl("previous")}><PrevIcon size={18} /></button>
-        <button className="ibtn" aria-label={now?.playing ? "暂停" : "播放"} onClick={() => mediaControl("toggle")}>
+        <button className="ibtn" aria-label={t("上一首")} onClick={() => mediaControl("previous")}><PrevIcon size={18} /></button>
+        <button className="ibtn" aria-label={now?.playing ? t("暂停") : t("播放")} onClick={() => mediaControl("toggle")}>
           {now?.playing ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
         </button>
-        <button className="ibtn" aria-label="下一首" onClick={() => mediaControl("next")}><NextIcon size={18} /></button>
+        <button className="ibtn" aria-label={t("下一首")} onClick={() => mediaControl("next")}><NextIcon size={18} /></button>
         <span className="sep" aria-hidden="true" />
         {spotify.liked !== null && (
           <button
             className={`ibtn heart${spotify.liked ? " is-liked" : ""}`}
-            aria-label={spotify.liked ? "从 Spotify 收藏中移除" : "收藏到 Spotify"}
+            aria-label={spotify.liked ? t("从 Spotify 收藏中移除") : t("收藏到 Spotify")}
             aria-pressed={spotify.liked}
             onClick={spotify.toggleLike}
           >
             <HeartIcon size={18} filled={spotify.liked} />
           </button>
         )}
-        <button className="ibtn" aria-label="锁定桌面歌词" onClick={() => invoke("set_desktop_locked", { locked: true })}>
+        <button className="ibtn" aria-label={t("锁定桌面歌词")} onClick={() => invoke("set_desktop_locked", { locked: true })}>
           <LockIcon size={18} />
         </button>
       </div>

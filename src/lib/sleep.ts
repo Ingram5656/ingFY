@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { NowPlaying } from "./types";
 import { trackKey } from "./types";
 import { mediaControl } from "./player";
+import { t } from "./i18n";
 
 export type SleepMode = "off" | 15 | 30 | 60 | "track";
 
@@ -56,6 +57,6 @@ export function useSleepTimer(now: NowPlaying | null, position: number) {
 export function sleepLabel(mode: SleepMode, left: number | null): string {
   if (mode === "off" || left === null) return "";
   const min = Math.ceil(left / 60000);
-  if (mode === "track") return left < 60000 ? `这首播完就暂停，还有 ${Math.ceil(left / 1000)} 秒` : `这首播完就暂停，还有 ${min} 分钟`;
-  return left < 60000 ? `还剩 ${Math.ceil(left / 1000)} 秒` : `还剩 ${min} 分钟`;
+  if (mode === "track") return left < 60000 ? t("这首播完就暂停，还有 {n} 秒", { n: Math.ceil(left / 1000) }) : t("这首播完就暂停，还有 {n} 分钟", { n: min });
+  return left < 60000 ? t("还剩 {n} 秒", { n: Math.ceil(left / 1000) }) : t("还剩 {n} 分钟", { n: min });
 }

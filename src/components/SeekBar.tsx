@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { formatTime } from "../lib/player";
+import { t } from "../lib/i18n";
 
 interface Props {
   position: number;
@@ -62,7 +63,7 @@ export function SeekBar({ position, duration, onPreview, onSeek }: Props) {
         ref={trackRef}
         role="slider"
         tabIndex={0}
-        aria-label="播放进度"
+        aria-label={t("播放进度")}
         aria-valuemin={0}
         aria-valuemax={Math.round(duration / 1000)}
         aria-valuenow={Math.round(shown / 1000)}

@@ -456,18 +456,42 @@ fn control_async(action: &'static str) {
     });
 }
 
-fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+/// 界面语言是不是英文（前端在设置里切换时通知过来），托盘菜单和登录回调页用
+pub(crate) static UI_EN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn ui_en() -> bool {
+    UI_EN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn tray_menu<R: tauri::Runtime, M: Manager<R>>(m: &M, en: bool) -> tauri::Result<tauri::menu::Menu<R>> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    let tr = |zh: &'static str, e: &'static str| if en { e } else { zh };
+    let show = MenuItem::with_id(m, "show", tr("显示主窗口", "Show ingfy"), true, None::<&str>)?;
+    let desk = MenuItem::with_id(m, "desktop", tr("显示 / 隐藏桌面歌词", "Show / hide desktop lyrics"), true, None::<&str>)?;
+    let prev = MenuItem::with_id(m, "prev", tr("上一首", "Previous"), true, None::<&str>)?;
+    let toggle = MenuItem::with_id(m, "toggle", tr("播放 / 暂停", "Play / pause"), true, None::<&str>)?;
+    let next = MenuItem::with_id(m, "next", tr("下一首", "Next"), true, None::<&str>)?;
+    let quit = MenuItem::with_id(m, "quit", tr("退出 ingfy", "Quit ingfy"), true, None::<&str>)?;
+    let sep1 = PredefinedMenuItem::separator(m)?;
+    let sep2 = PredefinedMenuItem::separator(m)?;
+    Menu::with_items(m, &[&show, &desk, &sep1, &prev, &toggle, &next, &sep2, &quit])
+}
+
+/// 前端切换语言时调用：记下语言，并把托盘菜单换成对应语言
+#[tauri::command]
+fn set_language(app: AppHandle, lang: String) -> Result<(), String> {
+    let en = lang == "en";
+    UI_EN.store(en, std::sync::atomic::Ordering::Relaxed);
+    if let Some(tray) = app.tray_by_id("ingfy") {
+        let menu = tray_menu(&app, en).map_err(|e| e.to_string())?;
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-    let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-    let desk = MenuItem::with_id(app, "desktop", "显示 / 隐藏桌面歌词", true, None::<&str>)?;
-    let prev = MenuItem::with_id(app, "prev", "上一首", true, None::<&str>)?;
-    let toggle = MenuItem::with_id(app, "toggle", "播放 / 暂停", true, None::<&str>)?;
-    let next = MenuItem::with_id(app, "next", "下一首", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "退出 ingfy", true, None::<&str>)?;
-    let sep1 = PredefinedMenuItem::separator(app)?;
-    let sep2 = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show, &desk, &sep1, &prev, &toggle, &next, &sep2, &quit])?;
+    let menu = tray_menu(app, ui_en())?;
     let mut builder = TrayIconBuilder::with_id("ingfy")
         .tooltip("ingfy")
         .menu(&menu)
@@ -654,7 +678,8 @@ pub fn run() {
             install_update,
             spotify_client_get,
             spotify_client_set,
-            open_url
+            open_url,
+            set_language
         ])
         .setup(|app| {
             let handle = app.handle().clone();

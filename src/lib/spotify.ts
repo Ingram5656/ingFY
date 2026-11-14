@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { NowPlaying } from "./types";
 import { trackKey } from "./types";
+import { t, tMsg } from "./i18n";
 
 export interface AccountStatus {
   loggedIn: boolean;
@@ -63,10 +64,10 @@ export function useSpotify(now: NowPlaying | null) {
     setLiked(next);
     try {
       await invoke("spotify_set_liked", { liked: next });
-      setMessage({ text: next ? "已添加到 Spotify 的“已点赞的歌曲”" : "已从“已点赞的歌曲”中移除", kind: "ok" });
+      setMessage({ text: next ? t("已添加到 Spotify 的“已点赞的歌曲”") : t("已从“已点赞的歌曲”中移除"), kind: "ok" });
     } catch (e) {
       setLiked(!next);
-      setMessage({ text: String(e), kind: "error" });
+      setMessage({ text: tMsg(String(e)), kind: "error" });
     }
   };
 
@@ -74,9 +75,9 @@ export function useSpotify(now: NowPlaying | null) {
     setBusy(true);
     try {
       setAccount(await invoke<AccountStatus>("spotify_login"));
-      setMessage({ text: "已连接 Spotify", kind: "ok" });
+      setMessage({ text: t("已连接 Spotify"), kind: "ok" });
     } catch (e) {
-      setMessage({ text: String(e), kind: "error" });
+      setMessage({ text: tMsg(String(e)), kind: "error" });
     } finally {
       setBusy(false);
     }

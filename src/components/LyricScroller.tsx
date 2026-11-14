@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type C
 import type { LyricLine } from "../lib/types";
 import { Karaoke } from "./Karaoke";
 import { FitText } from "./FitText";
+import { t } from "../lib/i18n";
 
 interface Props {
   lines: LyricLine[];
@@ -46,7 +47,7 @@ const Line = memo(function Line({ text, trans, d, progress, setRef, onPick }: Li
       style={style}
       role="button"
       tabIndex={0}
-      aria-label={`跳到这句：${text}`}
+      aria-label={t("跳到这句：{text}", { text })}
       onClick={onPick}
       onKeyDown={(e: KeyboardEvent) => {
         if (e.key === "Enter" || e.key === " ") {

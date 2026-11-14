@@ -15,6 +15,7 @@ import { formatTime } from "../lib/player";
 import { Presence } from "./Presence";
 import { invoke } from "@tauri-apps/api/core";
 import { PlayIcon } from "./Icons";
+import { t, tMsg } from "../lib/i18n";
 
 export type ShelfKind = "playlist" | "album";
 
@@ -66,7 +67,7 @@ export function LibraryView(p: Props) {
         libraryCache.set(p.kind, list);
         setItems(list);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(tMsg(String(e))));
   }, [p.kind, p.loggedIn]);
 
   useEffect(() => {
@@ -108,7 +109,7 @@ export function LibraryView(p: Props) {
     const t = setTimeout(() => {
       invoke<ShelfItem[]>("spotify_search", { query: q, kind: p.kind })
         .then((list) => alive && setRemote({ q, list }))
-        .catch((e) => alive && setToast({ text: String(e), kind: "error" }))
+        .catch((e) => alive && setToast({ text: tMsg(String(e)), kind: "error" }))
         .finally(() => alive && setSearching(false));
     }, 450);
     return () => {
@@ -132,46 +133,45 @@ export function LibraryView(p: Props) {
   }, [toast]);
 
   const play = async (it: ShelfItem) => {
-    setToast({ text: `正在打开《${it.name}》…`, kind: "ok" });
+    setToast({ text: t("正在打开《{name}》…", { name: it.name }), kind: "ok" });
     try {
       await invoke("spotify_play", { uri: it.uri });
-      setToast({ text: `开始播放《${it.name}》`, kind: "ok" });
+      setToast({ text: t("开始播放《{name}》", { name: it.name }), kind: "ok" });
     } catch (e) {
-      setToast({ text: String(e), kind: "error" });
+      setToast({ text: tMsg(String(e)), kind: "error" });
     }
   };
 
-  const playTrack = async (it: ShelfItem, t: ListTrack) => {
-    setToast({ text: `正在打开《${t.name}》…`, kind: "ok" });
+  const playTrack = async (it: ShelfItem, tr: ListTrack) => {
+    setToast({ text: t("正在打开《{name}》…", { name: tr.name }), kind: "ok" });
     try {
-      await invoke("spotify_play_track", { contextUri: it.uri, trackUri: t.uri });
-      setToast({ text: `开始播放《${t.name}》`, kind: "ok" });
+      await invoke("spotify_play_track", { contextUri: it.uri, trackUri: tr.uri });
+      setToast({ text: t("开始播放《{name}》", { name: tr.name }), kind: "ok" });
     } catch (e) {
-      setToast({ text: String(e), kind: "error" });
+      setToast({ text: tMsg(String(e)), kind: "error" });
     }
   };
 
-  const mineLabel = p.kind === "playlist" ? "我的歌单" : "我的专辑";
-  const noun = p.kind === "playlist" ? "歌单" : "专辑";
+  const mineLabel = p.kind === "playlist" ? t("我的歌单") : t("我的专辑");
 
   let empty: { text: string; action?: { label: string; run: () => void } } | null = null;
   if (!p.loggedIn) {
     empty = {
-      text: `连接 Spotify 后，这里会摆满你的${noun}`,
-      action: { label: p.loginBusy ? "正在连接…" : "连接 Spotify", run: p.onLogin },
+      text: t(p.kind === "playlist" ? "连接 Spotify 后，这里会摆满你的歌单" : "连接 Spotify 后，这里会摆满你的专辑"),
+      action: { label: p.loginBusy ? t("正在连接…") : t("连接 Spotify"), run: p.onLogin },
     };
   } else if (p.needsReauth) {
-    empty = { text: "曲库需要新的 Spotify 权限，重新连接一次就好", action: { label: "重新连接", run: p.onLogin } };
+    empty = { text: t("曲库需要新的 Spotify 权限，重新连接一次就好"), action: { label: t("重新连接"), run: p.onLogin } };
   } else if (error && !items) {
-    empty = { text: error, action: { label: "重试", run: load } };
+    empty = { text: error, action: { label: t("重试"), run: load } };
   } else if (!items) {
-    empty = { text: `正在读取你的${noun}…` };
+    empty = { text: t(p.kind === "playlist" ? "正在读取你的歌单…" : "正在读取你的专辑…") };
   } else if (q && scope === "spotify" && searching && !remote) {
-    empty = { text: "正在 Spotify 里搜…" };
+    empty = { text: t("正在 Spotify 里搜…") };
   } else if (q && shown.length === 0) {
-    empty = { text: scope === "spotify" ? `Spotify 里没搜到相关的${noun}` : `${mineLabel}里没有"${query.trim()}"` };
+    empty = { text: scope === "spotify" ? t(p.kind === "playlist" ? "Spotify 里没搜到相关的歌单" : "Spotify 里没搜到相关的专辑") : t(p.kind === "playlist" ? "我的歌单里没有“{q}”" : "我的专辑里没有“{q}”", { q: query.trim() }) };
   } else if (shown.length === 0) {
-    empty = { text: p.kind === "playlist" ? "你还没有歌单，去 Spotify 里建一个或关注几个吧" : "你还没有收藏专辑，在 Spotify 里点专辑页的加号就能收藏" };
+    empty = { text: p.kind === "playlist" ? t("你还没有歌单，去 Spotify 里建一个或关注几个吧") : t("你还没有收藏专辑，在 Spotify 里点专辑页的加号就能收藏") };
   }
 
   return (
@@ -185,18 +185,18 @@ export function LibraryView(p: Props) {
           <input
             ref={inputRef}
             value={query}
-            placeholder={scope === "spotify" ? `在 Spotify 搜${noun}` : `在${mineLabel}里找`}
-            aria-label="搜索"
+            placeholder={t(scope === "spotify" ? (p.kind === "playlist" ? "在 Spotify 搜歌单" : "在 Spotify 搜专辑") : p.kind === "playlist" ? "在我的歌单里找" : "在我的专辑里找")}
+            aria-label={t("搜索")}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") p.onCloseSearch();
             }}
           />
-          <div className="lib-scope" role="radiogroup" aria-label="搜索范围">
+          <div className="lib-scope" role="radiogroup" aria-label={t("搜索范围")}>
             {(
               [
                 ["mine", mineLabel],
-                ["spotify", "Spotify 曲库"],
+                ["spotify", t("Spotify 曲库")],
               ] as const
             ).map(([id, label]) => (
               <button key={id} role="radio" aria-checked={scope === id} className={scope === id ? "is-on" : ""} onClick={() => setScope(id)}>
@@ -204,7 +204,7 @@ export function LibraryView(p: Props) {
               </button>
             ))}
           </div>
-          <button className="lib-close" aria-label="关闭搜索" onClick={p.onCloseSearch}>
+          <button className="lib-close" aria-label={t("关闭搜索")} onClick={p.onCloseSearch}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
@@ -421,7 +421,7 @@ function Shelf({
       onKeyDown={onKey}
       tabIndex={0}
       role="listbox"
-      aria-label="唱片架，滚轮或拖动左右翻"
+      aria-label={t("唱片架，滚轮或拖动左右翻")}
       aria-activedescendant={n ? `rec-${center}` : undefined}
       ref={shelfRef}
       onClick={onShelfClick}
@@ -505,7 +505,7 @@ const Record = memo(function Record({ id, item, d, picked, pickedSide, onPlay }:
             </div>
             <button
               className="rec-play"
-              aria-label={`播放${item.name}`}
+              aria-label={t("播放{name}", { name: item.name })}
               onClick={(e) => {
                 e.stopPropagation();
                 onPlay();
@@ -555,22 +555,21 @@ function ShelfTracks({ item, onPlayTrack, onClose }: { item: ShelfItem; onPlayTr
         tracksCache.set(item.uri, d);
         if (alive) setData(d);
       })
-      .catch((e) => alive && setError(String(e)));
+      .catch((e) => alive && setError(tMsg(String(e))));
     return () => {
       alive = false;
     };
   }, [item.uri]);
 
-  const noun = item.kind === "album" ? "专辑" : "歌单";
   return (
-    <section className="shelf-tracks glass glass--thick" aria-label={`${item.name}的曲目`}>
+    <section className="shelf-tracks glass glass--thick" aria-label={t("{name}的曲目", { name: item.name })}>
       <header className="trk-head">
         <div>
-          <small>{noun}曲目</small>
+          <small>{t(item.kind === "album" ? "专辑曲目" : "歌单曲目")}</small>
           <strong>{item.name}</strong>
-          <span>{data ? `${data.tracks.length} 首` : item.subtitle}</span>
+          <span>{data ? t("{n} 首", { n: data.tracks.length }) : item.subtitle}</span>
         </div>
-        <button className="nl-close" aria-label="收起" onClick={onClose}>
+        <button className="nl-close" aria-label={t("收起")} onClick={onClose}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
@@ -587,18 +586,18 @@ function ShelfTracks({ item, onPlayTrack, onClose }: { item: ShelfItem; onPlayTr
           ))}
         </ol>
       ) : data.tracks.length === 0 ? (
-        <p className="nl-hint">这个{noun}里还没有歌</p>
+        <p className="nl-hint">{t(item.kind === "album" ? "这个专辑里还没有歌" : "这个歌单里还没有歌")}</p>
       ) : (
         <ol className="nl-list">
-          {data.tracks.map((t, i) => (
-            <li key={`${t.uri}-${i}`} style={{ animationDelay: `${Math.min(i, 12) * 28}ms` }} className="trk-row-in">
-              <button className="nl-row" onClick={() => onPlayTrack(item, t)}>
+          {data.tracks.map((tr, i) => (
+            <li key={`${tr.uri}-${i}`} style={{ animationDelay: `${Math.min(i, 12) * 28}ms` }} className="trk-row-in">
+              <button className="nl-row" onClick={() => onPlayTrack(item, tr)}>
                 <span className="nl-idx">{i + 1}</span>
                 <span className="nl-text">
-                  <span className="nl-name">{t.name}</span>
-                  <span className="nl-artist">{t.artists}</span>
+                  <span className="nl-name">{tr.name}</span>
+                  <span className="nl-artist">{tr.artists}</span>
                 </span>
-                <span className="nl-dur">{t.durationMs ? formatTime(t.durationMs) : ""}</span>
+                <span className="nl-dur">{tr.durationMs ? formatTime(tr.durationMs) : ""}</span>
               </button>
             </li>
           ))}

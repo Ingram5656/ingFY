@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { formatTime } from "../lib/player";
 import { LikedCover } from "./Shelf";
+import { t, tMsg } from "../lib/i18n";
 
 interface ListTrack {
   uri: string;
@@ -60,7 +61,7 @@ export function NowListPanel(p: Props) {
           })
           .catch((e) => {
             if (!alive) return;
-            setError(String(e));
+            setError(tMsg(String(e)));
             setStatus("error");
           });
       },
@@ -107,57 +108,56 @@ export function NowListPanel(p: Props) {
 
   if (!p.open) return null;
 
-  const play = async (t: ListTrack) => {
-    setBusyUri(t.uri);
+  const play = async (tr: ListTrack) => {
+    setBusyUri(tr.uri);
     try {
-      await invoke("spotify_play_track", { contextUri: data?.contextUri ?? null, trackUri: t.uri });
-      setData((d) => (d ? { ...d, currentUri: t.uri } : d));
+      await invoke("spotify_play_track", { contextUri: data?.contextUri ?? null, trackUri: tr.uri });
+      setData((d) => (d ? { ...d, currentUri: tr.uri } : d));
     } catch (e) {
-      setError(String(e));
+      setError(tMsg(String(e)));
     } finally {
       setBusyUri(null);
     }
   };
 
-  const kindLabel = data?.kind === "album" ? "专辑" : data?.kind === "playlist" || data?.kind === "liked" ? "歌单" : "队列";
 
   let body;
   if (!p.loggedIn) {
     body = (
       <div className="nl-empty">
-        <p>连接 Spotify 后，这里会列出正在播放的歌单或专辑里的所有歌</p>
-        <button className="st-btn" onClick={p.onLogin}>连接 Spotify</button>
+        <p>{t("连接 Spotify 后，这里会列出正在播放的歌单或专辑里的所有歌")}</p>
+        <button className="st-btn" onClick={p.onLogin}>{t("连接 Spotify")}</button>
       </div>
     );
   } else if (p.needsReauth) {
     body = (
       <div className="nl-empty">
-        <p>播放列表需要新的 Spotify 权限，重新连接一次就好</p>
-        <button className="st-btn" onClick={p.onLogin}>重新连接</button>
+        <p>{t("播放列表需要新的 Spotify 权限，重新连接一次就好")}</p>
+        <button className="st-btn" onClick={p.onLogin}>{t("重新连接")}</button>
       </div>
     );
   } else if (status === "loading") {
-    body = <p className="nl-hint">正在读取…</p>;
+    body = <p className="nl-hint">{t("正在读取…")}</p>;
   } else if (status === "none") {
-    body = <p className="nl-hint">现在没有在 Spotify 里播放</p>;
+    body = <p className="nl-hint">{t("现在没有在 Spotify 里播放")}</p>;
   } else if (status === "error" && !data) {
     body = <p className="nl-hint">{error}</p>;
   } else if (data) {
     body = (
       <>
-        {data.note && <p className="nl-note">{data.note}，先显示播放队列</p>}
+        {data.note && <p className="nl-note">{t("{note}，先显示播放队列", { note: tMsg(data.note) })}</p>}
         {tracks.length === 0 ? (
-          <p className="nl-hint">列表是空的</p>
+          <p className="nl-hint">{t("列表是空的")}</p>
         ) : (
           <ol className="nl-list" ref={listRef}>
-            {tracks.map((t, i) => {
+            {tracks.map((tr, i) => {
               const on = i === currentIdx;
               return (
-                <li key={`${t.uri}-${i}`}>
+                <li key={`${tr.uri}-${i}`}>
                   <button
-                    className={`nl-row${on ? " is-on" : ""}${busyUri === t.uri ? " is-busy" : ""}`}
+                    className={`nl-row${on ? " is-on" : ""}${busyUri === tr.uri ? " is-busy" : ""}`}
                     aria-current={on ? "true" : undefined}
-                    onClick={() => play(t)}
+                    onClick={() => play(tr)}
                   >
                     <span className="nl-idx" aria-hidden="true">
                       {on ? (
@@ -171,10 +171,10 @@ export function NowListPanel(p: Props) {
                       )}
                     </span>
                     <span className="nl-text">
-                      <span className="nl-name">{t.name}</span>
-                      <span className="nl-artist">{t.artists}</span>
+                      <span className="nl-name">{tr.name}</span>
+                      <span className="nl-artist">{tr.artists}</span>
                     </span>
-                    <span className="nl-dur">{t.durationMs ? formatTime(t.durationMs) : ""}</span>
+                    <span className="nl-dur">{tr.durationMs ? formatTime(tr.durationMs) : ""}</span>
                   </button>
                 </li>
               );
@@ -187,7 +187,7 @@ export function NowListPanel(p: Props) {
   }
 
   return (
-    <section className="nl-panel glass glass--thick" role="dialog" aria-label="播放列表">
+    <section className="nl-panel glass glass--thick" role="dialog" aria-label={t("播放列表")}>
       <header className="nl-head">
         {data?.image ? (
           <img className="nl-cover" src={data.image} alt="" />
@@ -199,15 +199,15 @@ export function NowListPanel(p: Props) {
           <span className="nl-cover nl-cover--empty" aria-hidden="true" />
         )}
         <div className="nl-title">
-          <small>{data ? `正在播放的${kindLabel}` : "播放列表"}</small>
-          <strong>{data?.title || "播放列表"}</strong>
+          <small>{data ? t(data.kind === "album" ? "正在播放的专辑" : data.kind === "queue" ? "正在播放的队列" : "正在播放的歌单") : t("播放列表")}</small>
+          <strong>{data?.title || t("播放列表")}</strong>
           {data && (
             <span>
-              {data.kind === "liked" && data.subtitle ? data.subtitle : `${data.subtitle ? `${data.subtitle}，` : ""}${tracks.length} 首`}
+              {data.kind === "liked" && data.subtitle ? tMsg(data.subtitle) : `${data.subtitle ? `${tMsg(data.subtitle)}${t("，")}` : ""}${t("{n} 首", { n: tracks.length })}`}
             </span>
           )}
         </div>
-        <button className="nl-close" aria-label="关闭播放列表" onClick={p.onClose}>
+        <button className="nl-close" aria-label={t("关闭播放列表")} onClick={p.onClose}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>

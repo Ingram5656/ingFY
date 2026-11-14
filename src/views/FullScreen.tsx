@@ -25,6 +25,7 @@ import { Presence } from "../components/Presence";
 import { LyricPicker } from "../components/LyricPicker";
 import { ShareSheet } from "../components/ShareSheet";
 import type { UpdateInfo } from "../components/SettingsPanel";
+import { t, tMsg, useLang } from "../lib/i18n";
 
 const STYLES: { id: LightStyle; label: string }[] = [
   { id: "tube", label: "灯管" },
@@ -87,6 +88,7 @@ function useBackgroundImage() {
 }
 
 export default function FullScreen() {
+  useLang(); // 切换语言时整页重绘
   const { now, artwork, desktopLocked } = usePlayer();
   const rawPosition = usePosition(now);
   const { position, seek, setPreview } = useSeek(now, rawPosition);
@@ -196,14 +198,14 @@ export default function FullScreen() {
 
       <div className="fs-stage" style={{ transform: `scale(${scale})` }}>
         <header className="fs-top">
-          <div ref={modeSegRef} className="seg seg--left glass" role="radiogroup" aria-label="显示方式">
+          <div ref={modeSegRef} className="seg seg--left glass" role="radiogroup" aria-label={t("显示方式")}>
             <span className="seg-thumb" aria-hidden="true" />
             {(
               [
-                ["lyrics", "歌词"],
-                ["vinyl", "唱片"],
-                ["playlists", "曲库"],
-                ["albums", "专辑"],
+                ["lyrics", t("歌词")],
+                ["vinyl", t("唱片")],
+                ["playlists", t("曲库")],
+                ["albums", t("专辑")],
               ] as const
             ).map(([id, name]) => (
               <button
@@ -223,14 +225,14 @@ export default function FullScreen() {
             ))}
           </div>
           {settings.viewMode === "lyrics" && (
-          <div className={`seg seg--lights glass${settings.lightsOn ? "" : " is-off"}`} role="group" aria-label="拾音灯">
+          <div className={`seg seg--lights glass${settings.lightsOn ? "" : " is-off"}`} role="group" aria-label={t("拾音灯")}>
             {/* 拾音灯总开关，和灯效切换共用一条工具栏 */}
             <button
               className="seg-toggle"
               role="switch"
               aria-checked={settings.lightsOn}
-              aria-label={settings.lightsOn ? "关闭拾音灯" : "打开拾音灯"}
-              title={settings.lightsOn ? "关闭拾音灯" : "打开拾音灯"}
+              aria-label={settings.lightsOn ? t("关闭拾音灯") : t("打开拾音灯")}
+              title={settings.lightsOn ? t("关闭拾音灯") : t("打开拾音灯")}
               onClick={() => update({ lightsOn: !settings.lightsOn })}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -239,7 +241,7 @@ export default function FullScreen() {
               </svg>
             </button>
             <span className="seg-sep" aria-hidden="true" />
-            <div ref={lightSegRef} className="seg-group" role="radiogroup" aria-label="拾音灯效果">
+            <div ref={lightSegRef} className="seg-group" role="radiogroup" aria-label={t("拾音灯效果")}>
               <span className="seg-thumb" aria-hidden="true" />
               {STYLES.map((s) => (
                 <button
@@ -250,17 +252,17 @@ export default function FullScreen() {
                   className={settings.lightStyle === s.id ? "is-on" : ""}
                   onClick={() => update({ lightStyle: s.id, lightsOn: true })}
                 >
-                  {s.label}
+                  {t(s.label)}
                 </button>
               ))}
             </div>
             <span className="seg-sep" aria-hidden="true" />
             {/* 歌词、专辑信息的显示开关。拾音灯关着时不能关（不然画面就空了），强制都显示 */}
-            <div className="seg-vis" role="group" aria-label="显示内容">
+            <div className="seg-vis" role="group" aria-label={t("显示内容")}>
               {(
                 [
-                  ["showLyrics", "歌词", <LyricsGlyph key="l" />],
-                  ["showAlbum", "专辑信息", <AlbumGlyph key="a" />],
+                  ["showLyrics", t("歌词"), <LyricsGlyph key="l" />],
+                  ["showAlbum", t("专辑信息"), <AlbumGlyph key="a" />],
                 ] as const
               ).map(([k, label, icon]) => {
                 const on = !settings.lightsOn || settings[k];
@@ -271,8 +273,8 @@ export default function FullScreen() {
                     role="switch"
                     aria-checked={on}
                     aria-disabled={!settings.lightsOn}
-                    aria-label={`${on ? "隐藏" : "显示"}${label}`}
-                    title={settings.lightsOn ? `${on ? "隐藏" : "显示"}${label}` : `打开拾音灯后才能隐藏${label}`}
+                    aria-label={t(on ? "隐藏{x}" : "显示{x}", { x: t(label) })}
+                    title={settings.lightsOn ? t(on ? "隐藏{x}" : "显示{x}", { x: t(label) }) : t("打开拾音灯后才能隐藏{x}", { x: t(label) })}
                     onClick={() => settings.lightsOn && update({ [k]: !settings[k] } as Partial<typeof settings>)}
                   >
                     {icon}
@@ -286,7 +288,7 @@ export default function FullScreen() {
             {library && (
               <button
                 className="ibtn"
-                aria-label={searchOpen ? "关闭搜索" : "搜索"}
+                aria-label={searchOpen ? t("关闭搜索") : t("搜索")}
                 aria-pressed={searchOpen}
                 onClick={() => setSearchOpen((v) => !v)}
               >
@@ -299,7 +301,7 @@ export default function FullScreen() {
             {vinyl && (
               <button
                 className="ibtn"
-                aria-label="自定义唱片"
+                aria-label={t("自定义唱片")}
                 aria-expanded={vinylMenuOpen}
                 aria-pressed={vinylMenuOpen}
                 onClick={() => setVinylMenuOpen((v) => !v)}
@@ -311,12 +313,12 @@ export default function FullScreen() {
                 </svg>
               </button>
             )}
-            <button className="ibtn" aria-label={desktopVisible ? "隐藏桌面歌词" : "显示桌面歌词"} aria-pressed={desktopVisible} onClick={toggleDesktop}>
+            <button className="ibtn" aria-label={desktopVisible ? t("隐藏桌面歌词") : t("显示桌面歌词")} aria-pressed={desktopVisible} onClick={toggleDesktop}>
               <DesktopLyricsIcon />
             </button>
             <button
               className="ibtn"
-              aria-label={desktopLocked ? "解锁桌面歌词" : "锁定桌面歌词"}
+              aria-label={desktopLocked ? t("解锁桌面歌词") : t("锁定桌面歌词")}
               aria-pressed={desktopLocked}
               onClick={() => invoke("set_desktop_locked", { locked: !desktopLocked })}
             >
@@ -324,10 +326,10 @@ export default function FullScreen() {
             </button>
             <button
               className={`ibtn more-btn${sleep.mode !== "off" ? " has-badge" : ""}`}
-              aria-label="更多"
+              aria-label={t("更多")}
               aria-expanded={moreOpen}
               aria-pressed={moreOpen}
-              title={sleep.mode !== "off" ? sleepLabel(sleep.mode, sleep.left) : "更多"}
+              title={sleep.mode !== "off" ? sleepLabel(sleep.mode, sleep.left) : t("更多")}
               onClick={() => setMoreOpen((v) => !v)}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -338,7 +340,7 @@ export default function FullScreen() {
             </button>
             <button
               className={`ibtn${updateInfo?.hasUpdate || (spotify.account.loggedIn && spotify.account.needsReauth) ? " has-dot" : ""}`}
-              aria-label={updateInfo?.hasUpdate ? "设置（有新版本）" : spotify.account.loggedIn && spotify.account.needsReauth ? "设置（Spotify 需要重新连接）" : "设置"}
+              aria-label={updateInfo?.hasUpdate ? t("设置（有新版本）") : spotify.account.loggedIn && spotify.account.needsReauth ? t("设置（Spotify 需要重新连接）") : t("设置")}
               onClick={() => setSettingsOpen(true)}
             >
               <GearIcon />
@@ -386,22 +388,22 @@ export default function FullScreen() {
                 <section className={`fs-track${showAlbum ? "" : " is-hidden"}${layout === "album" ? " is-solo" : ""}`} aria-hidden={!showAlbum || undefined}>
                   {artwork ? <img key={artwork.dataUrl.length + (now?.title ?? "")} className="cover cover-in" src={artwork.dataUrl} alt="" /> : <div className="cover cover--empty" />}
                   <FitText key={now?.title ?? ""} className="title text-in" fitKey={now?.title ?? ""} minScale={0.7} wrap={false}>
-                    {now?.title || "没有在播放"}
+                    {now?.title || t("没有在播放")}
                   </FitText>
-                  <p className="artist">{now?.artist || "在 Spotify 或其他播放器里放一首歌"}</p>
+                  <p className="artist">{now?.artist || t("在 Spotify 或其他播放器里放一首歌")}</p>
                   {now?.album && <p className="album">{now.album}</p>}
                   {lyrics.status === "ready" && (
                     <p className="lyric-src">
-                      歌词来自{lyrics.source}
-                      {lyrics.wordSync ? "，逐字同步" : lyrics.synced ? "" : "，没有时间轴"}
+                      {t("歌词来自{src}", { src: tMsg(lyrics.source) })}
+                      {lyrics.wordSync ? t("，逐字同步") : lyrics.synced ? "" : t("，没有时间轴")}
                     </p>
                   )}
                 </section>
 
                 <section className={`fs-lyrics${showLyrics ? "" : " is-hidden"}${layout === "lyrics" ? " is-solo" : ""}`} aria-live="polite" aria-hidden={!showLyrics || undefined}>
-                  {lyrics.status === "loading" && <p className="hint">正在找歌词…</p>}
+                  {lyrics.status === "loading" && <p className="hint">{t("正在找歌词…")}</p>}
                   {(lyrics.status === "none" || lyrics.status === "error") && now && (
-                    <p className="hint">{lyrics.status === "error" ? "歌词加载失败，检查一下网络" : lyrics.instrumental ? "纯音乐，没有歌词" : "没找到这首歌的歌词"}</p>
+                    <p className="hint">{lyrics.status === "error" ? t("歌词加载失败，检查一下网络") : lyrics.instrumental ? t("纯音乐，没有歌词") : t("没找到这首歌的歌词")}</p>
                   )}
                   {lyrics.status === "ready" && !lyrics.synced && (
                     <div className="plain">{lines.map((l, i) => <p key={i}>{l.text}</p>)}</div>
@@ -446,8 +448,8 @@ export default function FullScreen() {
         {/* 右下角：播放列表（正在播放的专辑 / 歌单里的所有歌） */}
         <button
           className={`fs-list glass${listOpen ? " is-on" : ""}`}
-          aria-label={listOpen ? "关闭播放列表" : "播放列表"}
-          title="播放列表"
+          aria-label={listOpen ? t("关闭播放列表") : t("播放列表")}
+          title={t("播放列表")}
           aria-pressed={listOpen}
           aria-expanded={listOpen}
           onClick={() => setListOpen((v) => !v)}
@@ -474,8 +476,8 @@ export default function FullScreen() {
         {/* 左下角：全屏（无边框铺满屏幕），Esc 退出 */}
         <button
           className="fs-full glass"
-          aria-label={fullscreen.full ? "退出全屏" : "全屏"}
-          title={fullscreen.full ? "退出全屏（Esc）" : "全屏"}
+          aria-label={fullscreen.full ? t("退出全屏") : t("全屏")}
+          title={fullscreen.full ? t("退出全屏（Esc）") : t("全屏")}
           aria-pressed={fullscreen.full}
           onClick={fullscreen.toggle}
         >
@@ -492,7 +494,7 @@ export default function FullScreen() {
           <div className="controls">
             <button
               className="ibtn"
-              aria-label="上一首"
+              aria-label={t("上一首")}
               onClick={() => {
                 markDirection(-1);
                 mediaControl("previous");
@@ -500,12 +502,12 @@ export default function FullScreen() {
             >
               <PrevIcon />
             </button>
-            <button className="play" aria-label={now?.playing ? "暂停" : "播放"} onClick={() => mediaControl("toggle")}>
+            <button className="play" aria-label={now?.playing ? t("暂停") : t("播放")} onClick={() => mediaControl("toggle")}>
               {now?.playing ? <PauseIcon size={26} /> : <PlayIcon size={26} />}
             </button>
             <button
               className="ibtn"
-              aria-label="下一首"
+              aria-label={t("下一首")}
               onClick={() => {
                 markDirection(1);
                 mediaControl("next");
@@ -517,10 +519,10 @@ export default function FullScreen() {
           <SeekBar position={position} duration={now?.durationMs ?? 0} onPreview={setPreview} onSeek={seek} />
           <button
             className={`ibtn heart${spotify.liked ? " is-liked" : ""}`}
-            aria-label={!spotify.account.loggedIn ? "连接 Spotify 后可收藏" : spotify.liked ? "从 Spotify 收藏中移除" : "收藏到 Spotify"}
+            aria-label={!spotify.account.loggedIn ? t("连接 Spotify 后可收藏") : spotify.liked ? t("从 Spotify 收藏中移除") : t("收藏到 Spotify")}
             aria-pressed={!!spotify.liked}
             disabled={heartDisabled}
-            title={heartDisabled ? "当前不是在 Spotify 播放" : undefined}
+            title={heartDisabled ? t("当前不是在 Spotify 播放") : undefined}
             onClick={onHeart}
           >
             <HeartIcon filled={!!spotify.liked} />

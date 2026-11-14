@@ -8,6 +8,7 @@ import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
 import { COLOR_PRESETS, pickGradient } from "../lib/palette";
 import { deskScale, lightPalette, lyricScale } from "../lib/settings";
+import { t, tMsg, useLang } from "../lib/i18n";
 
 interface Props {
   settings: Settings;
@@ -34,14 +35,14 @@ export interface UpdateInfo {
 }
 
 const SHORTCUTS: [string, string][] = [
-  ["Ctrl Alt L", "显示 / 隐藏桌面歌词"],
-  ["Ctrl Alt P", "播放 / 暂停"],
-  ["Ctrl Alt ← →", "上一首 / 下一首"],
-  ["Ctrl Alt K", "收藏当前歌曲"],
+  ["Ctrl Alt L", t("显示 / 隐藏桌面歌词")],
+  ["Ctrl Alt P", t("播放 / 暂停")],
+  ["Ctrl Alt ← →", t("上一首 / 下一首")],
+  ["Ctrl Alt K", t("收藏当前歌曲")],
 ];
 
 /** 通用：开机自启、快捷键、版本与更新 */
-function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
+function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | null; settings: Settings; update: (patch: Partial<Settings>) => void }) {
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [info, setInfo] = useState<UpdateInfo | null>(initial ?? null);
   const [state, setState] = useState<"idle" | "checking" | "installing">("idle");
@@ -57,7 +58,7 @@ function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
     try {
       setAutostart(await invoke<boolean>("set_autostart", { enabled: !autostart }));
     } catch (e) {
-      setMsg(String(e));
+      setMsg(tMsg(String(e)));
     }
   };
   const check = async () => {
@@ -66,9 +67,9 @@ function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
     try {
       const r = await invoke<UpdateInfo>("check_update");
       setInfo(r);
-      if (!r.hasUpdate) setMsg("已经是最新版本");
+      if (!r.hasUpdate) setMsg(t("已经是最新版本"));
     } catch (e) {
-      setMsg(String(e));
+      setMsg(tMsg(String(e)));
     } finally {
       setState("idle");
     }
@@ -76,27 +77,44 @@ function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
   const install = async () => {
     if (!info?.installerUrl) return;
     setState("installing");
-    setMsg("正在下载新版本，下载完会自动打开安装程序…");
+    setMsg(t("正在下载新版本，下载完会自动打开安装程序…"));
     try {
       await invoke("install_update", { url: info.installerUrl });
     } catch (e) {
-      setMsg(String(e));
+      setMsg(tMsg(String(e)));
       setState("idle");
     }
   };
 
   return (
     <>
-      <Group foot="关闭主窗口后 ingfy 会留在右下角托盘里，桌面歌词和快捷键继续工作；从托盘菜单退出。">
+      <Group title={t("语言")}>
+        <div className="st-cell">
+          <div className="st-seg" role="radiogroup" aria-label={t("语言")}>
+            {(
+              [
+                ["system", t("跟随系统")],
+                ["zh", "简体中文"],
+                ["en", "English"],
+              ] as const
+            ).map(([id, name]) => (
+              <button key={id} role="radio" aria-checked={(settings.language ?? "system") === id} onClick={() => update({ language: id })}>
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Group>
+      <Group foot={t("关闭主窗口后 ingfy 会留在右下角托盘里，桌面歌词和快捷键继续工作；从托盘菜单退出。")}>
         <Toggle
-          label="开机自动启动"
-          sub="开机后只显示桌面歌词，主窗口留在托盘"
+          label={t("开机自动启动")}
+          sub={t("开机后只显示桌面歌词，主窗口留在托盘")}
           on={!!autostart}
           disabled={autostart === null}
           onChange={() => void toggleAutostart()}
         />
       </Group>
-      <Group title="快捷键" foot="在任何程序里都能用。被别的程序占用的组合会自动跳过。">
+      <Group title={t("快捷键")} foot={t("在任何程序里都能用。被别的程序占用的组合会自动跳过。")}>
         {SHORTCUTS.map(([k, v]) => (
           <div className="st-cell st-key" key={k}>
             <span>{v}</span>
@@ -108,22 +126,22 @@ function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
           </div>
         ))}
       </Group>
-      <Group title="关于" foot={msg || undefined}>
+      <Group title={t("关于")} foot={msg || undefined}>
         <div className="st-cell st-update">
           <span className="st-option-text">
             <span>
               ingfy {info?.current ?? version}
-              {info?.hasUpdate && <em className="st-new">新版本 {info.latest}</em>}
+              {info?.hasUpdate && <em className="st-new">{t("新版本 {v}", { v: info.latest })}</em>}
             </span>
-            <small>{info?.hasUpdate ? "下载后会自动打开安装程序" : "从 GitHub 检查新版本"}</small>
+            <small>{info?.hasUpdate ? t("下载后会自动打开安装程序") : t("从 GitHub 检查新版本")}</small>
           </span>
           {info?.hasUpdate && info.installerUrl ? (
             <button className="st-btn st-btn--primary" onClick={install} disabled={state !== "idle"}>
-              {state === "installing" ? "正在更新…" : "立即更新"}
+              {state === "installing" ? t("正在更新…") : t("立即更新")}
             </button>
           ) : (
             <button className="st-btn" onClick={check} disabled={state !== "idle"}>
-              {state === "checking" ? "正在检查…" : "检查更新"}
+              {state === "checking" ? t("正在检查…") : t("检查更新")}
             </button>
           )}
         </div>
@@ -134,24 +152,26 @@ function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
 }
 
 const TAGLINE_KEY = "ingfy.tagline";
+/** 关于页署名下面默认的那句话，可以点一下改成自己的 */
+const DEFAULT_TAGLINE = "Do whatever you want and f**k the rest";
 
 /** 关于页最下面的署名，以及一句自己写的话（点一下就能改，存在本地） */
 function Credits() {
   const [line, setLine] = useState(() => {
     try {
-      return localStorage.getItem(TAGLINE_KEY) ?? "";
+      return localStorage.getItem(TAGLINE_KEY) ?? DEFAULT_TAGLINE;
     } catch {
-      return "";
+      return DEFAULT_TAGLINE;
     }
   });
   const [editing, setEditing] = useState(false);
   const save = (v: string) => {
-    const t = v.trim();
-    setLine(t);
+    const text = v.trim();
+    setLine(text);
     setEditing(false);
     try {
-      if (t) localStorage.setItem(TAGLINE_KEY, t);
-      else localStorage.removeItem(TAGLINE_KEY);
+      // 清空也记下来（存空字符串），不会又变回默认那句
+      localStorage.setItem(TAGLINE_KEY, text);
     } catch {
       /* 存不下就算了 */
     }
@@ -167,8 +187,8 @@ function Credits() {
           autoFocus
           defaultValue={line}
           maxLength={60}
-          placeholder="写一句你喜欢的话"
-          aria-label="写一句你喜欢的话"
+          placeholder={t("写一句你喜欢的话")}
+          aria-label={t("写一句你喜欢的话")}
           onBlur={(e) => save(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") save((e.target as HTMLInputElement).value);
@@ -176,8 +196,8 @@ function Credits() {
           }}
         />
       ) : (
-        <button className={`st-tagline${line ? "" : " is-empty"}`} onClick={() => setEditing(true)} title="点一下修改">
-          {line || "点这里写一句你喜欢的话"}
+        <button className={`st-tagline${line ? "" : " is-empty"}`} onClick={() => setEditing(true)} title={t("点一下修改")}>
+          {line || t("点这里写一句你喜欢的话")}
         </button>
       )}
     </footer>
@@ -243,6 +263,7 @@ function LightThumb({ id, palette }: { id: LightStyle; palette: string[] }) {
 }
 
 export function SettingsPanel(p: Props) {
+  useLang();
   const { settings: s, update } = p;
   const lightPal = lightPalette(s, p.palette);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -260,7 +281,7 @@ export function SettingsPanel(p: Props) {
     try {
       const url = await downscaleImage(file);
       if (!saveBackgroundImage(url)) {
-        setImgError("图片太大了，换一张小一点的试试");
+        setImgError(t("图片太大了，换一张小一点的试试"));
         return;
       }
       setImgError(null);
@@ -306,7 +327,7 @@ export function SettingsPanel(p: Props) {
   };
 
   const lyricColorSwatches = (
-    <div className="st-swatches" role="radiogroup" aria-label="固定颜色">
+    <div className="st-swatches" role="radiogroup" aria-label={t("固定颜色")}>
       {LYRIC_PRESETS.map((c) => {
         const on = s.lyricColorMode === "custom" && s.lyricColor.toUpperCase() === c.c;
         return (
@@ -315,13 +336,13 @@ export function SettingsPanel(p: Props) {
             className="st-swatch"
             role="radio"
             aria-checked={on}
-            aria-label={c.name}
+            aria-label={t(c.name)}
             style={{ background: c.c }}
             onClick={() => update({ lyricColorMode: "custom", lyricColor: c.c })}
           />
         );
       })}
-      <label className="st-swatch st-swatch--pick" aria-label="更多颜色">
+      <label className="st-swatch st-swatch--pick" aria-label={t("更多颜色")}>
         <input type="color" value={s.lyricColor} onChange={(e) => update({ lyricColorMode: "custom", lyricColor: e.target.value.toUpperCase() })} />
         {/* 自己挑的颜色不在预设里时显示该颜色，否则显示彩色色环 */}
         <span
@@ -339,27 +360,27 @@ export function SettingsPanel(p: Props) {
   const pages: Record<PageId, JSX.Element> = {
     look: (
       <>
-        <Group title="样式">
+        <Group title={t("样式")}>
           <div className="st-cell">
-            <div className="st-tiles" role="radiogroup" aria-label="背景">
+            <div className="st-tiles" role="radiogroup" aria-label={t("背景")}>
               {bgOptions.map((o) => (
                 <button key={o.id} className="st-tile" role="radio" aria-checked={s.background === o.id} onClick={() => chooseBg(o.id)}>
                   <span className="st-thumb" style={o.style}>
-                    {o.id === "image" && !p.bgImage && <span className="st-upload">点击选择</span>}
+                    {o.id === "image" && !p.bgImage && <span className="st-upload">{t("点击选择")}</span>}
                     {s.background === o.id && (
                       <span className="st-check">
                         <CheckIcon />
                       </span>
                     )}
                   </span>
-                  <span>{o.label}</span>
+                  <span>{t(o.label)}</span>
                 </button>
               ))}
             </div>
             {p.bgImage && (
               <div className="st-row-btns">
                 <button className="st-link" onClick={() => fileRef.current?.click()}>
-                  换一张图片
+                  {t("换一张图片")}
                 </button>
                 <button
                   className="st-link"
@@ -368,7 +389,7 @@ export function SettingsPanel(p: Props) {
                     if (s.background === "image") update({ background: "fluid" });
                   }}
                 >
-                  删除图片
+                  {t("删除图片")}
                 </button>
               </div>
             )}
@@ -380,53 +401,53 @@ export function SettingsPanel(p: Props) {
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
           </div>
         </Group>
-        <Group foot="背景越暗，歌词越清楚。">
+        <Group foot={t("背景越暗，歌词越清楚。")}>
           <div className="st-cell">
-            <Slider label="背景模糊" value={s.bgBlur} display={`${s.bgBlur}`} onChange={(v) => update({ bgBlur: v })} />
+            <Slider label={t("背景模糊")} value={s.bgBlur} display={`${s.bgBlur}`} onChange={(v) => update({ bgBlur: v })} />
           </div>
           <div className="st-cell">
-            <Slider label="背景暗度" value={s.bgDim} display={`${s.bgDim}`} onChange={(v) => update({ bgDim: v })} />
+            <Slider label={t("背景暗度")} value={s.bgDim} display={`${s.bgDim}`} onChange={(v) => update({ bgDim: v })} />
           </div>
         </Group>
       </>
     ),
     lyrics: (
       <>
-        <Group title="唱到的字的颜色" foot="全屏歌词和桌面歌词一起生效。">
+        <Group title={t("唱到的字的颜色")} foot={t("全屏歌词和桌面歌词一起生效。")}>
           <button className="st-cell st-choice" role="radio" aria-checked={s.lyricColorMode === "album"} onClick={() => update({ lyricColorMode: "album" })}>
             <span className="st-dot" style={{ background: `linear-gradient(135deg, ${p.palette[0]}, ${p.palette[p.palette.length - 1]})` }} />
             <span className="st-option-text">
-              <span>跟随专辑</span>
-              <small>换歌时自动换色</small>
+              <span>{t("跟随专辑")}</span>
+              <small>{t("换歌时自动换色")}</small>
             </span>
             {s.lyricColorMode === "album" && <CheckIcon />}
           </button>
           <div className="st-cell">
-            <span className="st-cell-label">固定颜色</span>
+            <span className="st-cell-label">{t("固定颜色")}</span>
             {lyricColorSwatches}
           </div>
         </Group>
         <Group>
-          <Toggle label="显示翻译" sub="外语歌有翻译时，在全屏歌词每句下面显示" on={s.showTranslation} onChange={(v) => update({ showTranslation: v })} />
+          <Toggle label={t("显示翻译")} sub={t("外语歌有翻译时，在全屏歌词每句下面显示")} on={s.showTranslation} onChange={(v) => update({ showTranslation: v })} />
         </Group>
         <Group
-          title="字号"
+          title={t("字号")}
           foot={
             s.lyricSize !== 50 || s.desktopLyricSize !== 50 ? (
               <button className="st-link" onClick={() => update({ lyricSize: 50, desktopLyricSize: 50 })}>
-                恢复默认字号
+                {t("恢复默认字号")}
               </button>
             ) : (
-              "放不下一行的句子会自动缩小。"
+              t("放不下一行的句子会自动缩小。")
             )
           }
         >
           <div className="st-cell">
-            <Slider label="全屏歌词" value={s.lyricSize} display={`${Math.round(lyricScale(s.lyricSize) * 100)}%`} onChange={(v) => update({ lyricSize: v })} />
+            <Slider label={t("全屏歌词")} value={s.lyricSize} display={`${Math.round(lyricScale(s.lyricSize) * 100)}%`} onChange={(v) => update({ lyricSize: v })} />
           </div>
           <div className="st-cell">
             <Slider
-              label="桌面歌词"
+              label={t("桌面歌词")}
               value={s.desktopLyricSize}
               display={`${Math.round(deskScale(s.desktopLyricSize) * 100)}%`}
               onChange={(v) => update({ desktopLyricSize: v })}
@@ -437,36 +458,36 @@ export function SettingsPanel(p: Props) {
     ),
     lights: (
       <>
-        <Group title="灯效">
+        <Group title={t("灯效")}>
           <div className="st-cell">
-            <div className="st-fx" role="radiogroup" aria-label="灯效样式">
+            <div className="st-fx" role="radiogroup" aria-label={t("灯效样式")}>
               {LIGHT_STYLES.map((l) => (
                 <button key={l.id} className="st-tile" role="radio" aria-checked={s.lightStyle === l.id} onClick={() => update({ lightStyle: l.id })}>
                   <span className="st-thumb st-thumb--fx">
                     <LightThumb id={l.id} palette={lightPal} />
                   </span>
-                  <span>{l.label}</span>
+                  <span>{t(l.label)}</span>
                 </button>
               ))}
             </div>
           </div>
-          <Toggle label="跟着节拍闪烁" sub="关掉后灯光只缓慢呼吸" on={s.beat} onChange={(v) => update({ beat: v })} />
+          <Toggle label={t("跟着节拍闪烁")} sub={t("关掉后灯光只缓慢呼吸")} on={s.beat} onChange={(v) => update({ beat: v })} />
         </Group>
         <Group>
           <div className="st-cell">
-            <Slider label="亮度" value={s.lightBrightness} display={`${s.lightBrightness}`} onChange={(v) => update({ lightBrightness: v })} />
+            <Slider label={t("亮度")} value={s.lightBrightness} display={`${s.lightBrightness}`} onChange={(v) => update({ lightBrightness: v })} />
           </div>
           <div className="st-cell">
-            <Slider label="色彩鲜艳度" value={s.vividness} display={`${s.vividness}`} onChange={(v) => update({ vividness: v })} />
+            <Slider label={t("色彩鲜艳度")} value={s.vividness} display={`${s.vividness}`} onChange={(v) => update({ vividness: v })} />
           </div>
         </Group>
-        <Group title="颜色" foot={s.lightColorMode === "album" ? "换歌时自动取当前专辑封面的颜色。" : undefined}>
+        <Group title={t("颜色")} foot={s.lightColorMode === "album" ? t("换歌时自动取当前专辑封面的颜色。") : undefined}>
           <div className="st-cell">
-            <div className="st-seg" role="radiogroup" aria-label="拾音灯颜色来源">
+            <div className="st-seg" role="radiogroup" aria-label={t("拾音灯颜色来源")}>
               {(
                 [
-                  ["album", "取自专辑"],
-                  ["custom", "固定配色"],
+                  ["album", t("取自专辑")],
+                  ["custom", t("固定配色")],
                 ] as const
               ).map(([id, name]) => (
                 <button key={id} role="radio" aria-checked={s.lightColorMode === id} onClick={() => update({ lightColorMode: id })}>
@@ -478,13 +499,13 @@ export function SettingsPanel(p: Props) {
           {s.lightColorMode === "custom" && (
             <>
               <div className="st-cell">
-                <div className="st-presets" role="radiogroup" aria-label="配色主题">
+                <div className="st-presets" role="radiogroup" aria-label={t("配色主题")}>
                   {COLOR_PRESETS.map((c) => {
                     const on = s.lightA === c.a && s.lightB === c.b;
                     return (
                       <button key={c.id} className="st-preset" role="radio" aria-checked={on} onClick={() => update({ lightA: c.a, lightB: c.b })}>
                         <span style={{ background: `linear-gradient(90deg, ${c.a}, ${c.b})` }} />
-                        {c.name}
+                        {t(c.name)}
                       </button>
                     );
                   })}
@@ -494,15 +515,15 @@ export function SettingsPanel(p: Props) {
                 <div className="st-pickers">
                   <label className="st-pick">
                     <input type="color" value={s.lightA} onChange={(e) => update({ lightA: e.target.value.toUpperCase() })} />
-                    起始色
+                    {t("起始色")}
                   </label>
                   <span className="st-grad" style={{ background: `linear-gradient(90deg, ${s.lightA}, ${s.lightB})` }} aria-hidden="true" />
                   <label className="st-pick">
                     <input type="color" value={s.lightB} onChange={(e) => update({ lightB: e.target.value.toUpperCase() })} />
-                    结束色
+                    {t("结束色")}
                   </label>
                   <button className="st-link" onClick={() => update({ lightA: s.lightB, lightB: s.lightA })}>
-                    对调
+                    {t("对调")}
                   </button>
                 </div>
               </div>
@@ -516,10 +537,10 @@ export function SettingsPanel(p: Props) {
         <Group
           foot={
             p.account.expired
-              ? "Spotify 对开发模式应用的登录最长保留半年，或者你在 Spotify 账号里撤销了授权。重新连接一次就好。"
+              ? t("Spotify 对开发模式应用的登录最长保留半年，或者你在 Spotify 账号里撤销了授权。重新连接一次就好。")
               : p.account.loggedIn
-                ? "连接后可以收藏歌曲、浏览曲库和专辑、查看播放列表；从专辑或歌单开始播放需要 Premium。"
-                : "歌词、拾音灯、桌面歌词不需要连接 Spotify，任何播放器都能用。"
+                ? t("连接后可以收藏歌曲、浏览曲库和专辑、查看播放列表；从专辑或歌单开始播放需要 Premium。")
+                : t("歌词、拾音灯、桌面歌词不需要连接 Spotify，任何播放器都能用。")
           }
         >
           <div className="st-cell st-account">
@@ -533,27 +554,27 @@ export function SettingsPanel(p: Props) {
                 <>
                   <span>{p.account.displayName}</span>
                   <small className={p.account.needsReauth ? "st-warn" : undefined}>
-                    {p.account.expired ? "登录已过期" : p.account.needsReauth ? "需要重新连接一次，授予新的权限" : "已连接"}
+                    {p.account.expired ? t("登录已过期") : p.account.needsReauth ? t("需要重新连接一次，授予新的权限") : t("已连接")}
                   </small>
                 </>
               ) : (
                 <>
-                  <span>未连接</span>
-                  <small>连接后可以收藏正在播放的歌</small>
+                  <span>{t("未连接")}</span>
+                  <small>{t("连接后可以收藏正在播放的歌")}</small>
                 </>
               )}
             </span>
             {p.account.loggedIn && p.account.needsReauth ? (
               <button className="st-btn st-btn--spotify" onClick={p.onLogin} disabled={p.accountBusy}>
-                {p.accountBusy ? "等待浏览器授权…" : "重新连接"}
+                {p.accountBusy ? t("等待浏览器授权…") : t("重新连接")}
               </button>
             ) : p.account.loggedIn ? (
               <button className="st-btn" onClick={p.onLogout}>
-                断开
+                {t("断开")}
               </button>
             ) : (
               <button className="st-btn st-btn--spotify" onClick={p.onLogin} disabled={p.accountBusy}>
-                {p.accountBusy ? "等待浏览器授权…" : "连接 Spotify"}
+                {p.accountBusy ? t("等待浏览器授权…") : t("连接 Spotify")}
               </button>
             )}
           </div>
@@ -561,7 +582,7 @@ export function SettingsPanel(p: Props) {
         <ClientSection />
       </>
     ),
-    general: <GeneralSection initial={p.updateInfo} />,
+    general: <GeneralSection initial={p.updateInfo} settings={s} update={update} />,
   };
 
   const current = NAV.find((n) => n.id === page)!;
@@ -569,8 +590,8 @@ export function SettingsPanel(p: Props) {
     <div className="st-backdrop" onPointerDown={(e) => e.target === e.currentTarget && p.onClose()}>
       <div className="st-panel glass glass--thick" role="dialog" aria-modal="true" aria-labelledby="st-title">
         {/* 左边：分类 */}
-        <nav className="st-nav" aria-label="设置分类">
-          <h2 id="st-title">设置</h2>
+        <nav className="st-nav" aria-label={t("设置分类")}>
+          <h2 id="st-title">{t("设置")}</h2>
           {NAV.map((n) => (
             <button
               key={n.id}
@@ -581,9 +602,9 @@ export function SettingsPanel(p: Props) {
               <span className="st-icon" style={{ background: n.color }} aria-hidden="true">
                 {n.icon}
               </span>
-              <span>{n.label}</span>
-              {n.id === "general" && p.updateInfo?.hasUpdate && <span className="st-badge" aria-label="有新版本" />}
-              {n.id === "spotify" && p.account.loggedIn && p.account.needsReauth && <span className="st-badge" aria-label="需要重新连接" />}
+              <span>{t(n.label)}</span>
+              {n.id === "general" && p.updateInfo?.hasUpdate && <span className="st-badge" aria-label={t("有新版本")} />}
+              {n.id === "spotify" && p.account.loggedIn && p.account.needsReauth && <span className="st-badge" aria-label={t("需要重新连接")} />}
             </button>
           ))}
         </nav>
@@ -591,9 +612,9 @@ export function SettingsPanel(p: Props) {
         {/* 右边：当前分类的内容 */}
         <div className="st-main">
           <header className="st-main-head">
-            <h3>{current.label}</h3>
+            <h3>{t(current.label)}</h3>
             <button className="st-btn st-btn--primary st-done" onClick={p.onClose}>
-              完成
+              {t("完成")}
             </button>
           </header>
           <div className="st-page" key={page}>
@@ -634,9 +655,9 @@ function ClientSection() {
     try {
       await invoke("spotify_client_set", { clientId: id });
       setInfo((i) => (i ? { ...i, clientId: id } : i));
-      setMsg({ text: id ? "已保存。点上面的「连接 Spotify」，用你自己的应用登录。" : "已改回 ingfy 自带的应用，需要重新连接。" });
+      setMsg({ text: id ? t("已保存。点上面的「连接 Spotify」，用你自己的应用登录。") : t("已改回 ingfy 自带的应用，需要重新连接。") });
     } catch (e) {
-      setMsg({ text: String(e), error: true });
+      setMsg({ text: tMsg(String(e)), error: true });
     }
   };
 
@@ -661,16 +682,16 @@ function ClientSection() {
   const dirty = draft.trim().toLowerCase() !== (saved ?? "");
   return (
     <Group
-      title="登录方式"
+      title={t("登录方式")}
       foot={
         msg ? (
           <span className={msg.error ? "st-warn" : undefined}>{msg.text}</span>
         ) : (
-          "ingfy 自带的应用处于 Spotify 的开发模式，只有被加进用户名单的账号能登录（最多 5 人）。用自己的应用不占名额，但需要你有 Spotify Premium。换应用后需要重新连接。"
+          t("ingfy 自带的应用处于 Spotify 的开发模式，只有被加进用户名单的账号能登录（最多 5 人）。用自己的应用不占名额，但需要你有 Spotify Premium。换应用后需要重新连接。")
         )
       }
     >
-      <Toggle label="使用自己的 Client ID" sub={saved ? "正在使用你自己的 Spotify 应用" : "现在用的是 ingfy 自带的应用"} on={own} onChange={toggle} />
+      <Toggle label={t("使用自己的 Client ID")} sub={saved ? t("正在使用你自己的 Spotify 应用") : t("现在用的是 ingfy 自带的应用")} on={own} onChange={toggle} />
       {own && (
         <>
           <div className="st-cell">
@@ -679,7 +700,7 @@ function ClientSection() {
               <input
                 className="st-input"
                 value={draft}
-                placeholder="粘贴 32 位 Client ID"
+                placeholder={t("粘贴 32 位 Client ID")}
                 spellCheck={false}
                 autoComplete="off"
                 onChange={(e) => {
@@ -689,29 +710,29 @@ function ClientSection() {
                 onKeyDown={(e) => e.key === "Enter" && dirty && draft.trim() && void apply(draft.trim())}
               />
               <button className="st-btn st-btn--primary" disabled={!dirty || !draft.trim()} onClick={() => void apply(draft.trim())}>
-                保存
+                {t("保存")}
               </button>
             </div>
           </div>
           <div className="st-cell">
-            <span className="st-cell-label">怎么申请（两分钟）</span>
+            <span className="st-cell-label">{t("怎么申请（两分钟）")}</span>
             <ol className="st-steps">
               <li>
-                打开 Spotify 开发者后台，用你的 Spotify 账号登录。
+                {t("打开 Spotify 开发者后台，用你的 Spotify 账号登录。")}
                 <button className="st-link" onClick={() => void invoke("open_url", { url: DASHBOARD })}>
-                  打开开发者后台
+                  {t("打开开发者后台")}
                 </button>
               </li>
-              <li>点 Create app，名字和描述随便填。</li>
+              <li>{t("点 Create app，名字和描述随便填。")}</li>
               <li>
-                Redirect URI 填
+                {t("Redirect URI 填")}
                 <code className="st-code">{info?.redirectUri ?? "http://127.0.0.1:43821/callback"}</code>
                 <button className="st-chip" onClick={copy}>
-                  {copied ? "已复制" : "复制"}
+                  {copied ? t("已复制") : t("复制")}
                 </button>
               </li>
-              <li>"Which API/SDKs are you planning to use" 勾选 Web API，同意条款后保存。</li>
-              <li>在应用的 Settings 里复制 Client ID，粘贴到上面，点保存，然后连接 Spotify。</li>
+              <li>{t("“Which API/SDKs are you planning to use” 勾选 Web API，同意条款后保存。")}</li>
+              <li>{t("在应用的 Settings 里复制 Client ID，粘贴到上面，点保存，然后连接 Spotify。")}</li>
             </ol>
           </div>
         </>

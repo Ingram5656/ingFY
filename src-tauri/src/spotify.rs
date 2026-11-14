@@ -200,10 +200,12 @@ fn wait_for_callback(listener: TcpListener) -> Result<(String, String), String> 
                         _ => {}
                     }
                 }
-                let (title, msg) = if code.is_some() {
-                    ("登录成功", "已经连接到 ingfy，可以关闭这个页面了。")
-                } else {
-                    ("没有登录", "你取消了授权，或者授权出错了。可以回到 ingfy 重新连接。")
+                let en = crate::ui_en();
+                let (title, msg) = match (code.is_some(), en) {
+                    (true, false) => ("登录成功", "已经连接到 ingfy，可以关闭这个页面了。"),
+                    (true, true) => ("Signed in", "ingfy is connected. You can close this page."),
+                    (false, false) => ("没有登录", "你取消了授权，或者授权出错了。可以回到 ingfy 重新连接。"),
+                    (false, true) => ("Not signed in", "Authorization was cancelled or failed. Go back to ingfy to try again."),
                 };
                 let body = format!(
                     "<!doctype html><meta charset=utf-8><title>{title}</title>\

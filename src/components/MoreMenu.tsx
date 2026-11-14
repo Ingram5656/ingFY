@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { SleepMode } from "../lib/sleep";
+import { t } from "../lib/i18n";
 
 interface Props {
   onClose: () => void;
@@ -48,34 +49,34 @@ export function MoreMenu(p: Props) {
   }, [p]);
 
   const sec = (p.offset / 1000).toFixed(1);
-  const offsetText = p.offset === 0 ? "准时" : p.offset > 0 ? `提前 ${sec}s` : `推后 ${sec.slice(1)}s`;
+  const offsetText = p.offset === 0 ? t("准时") : p.offset > 0 ? t("提前 {s}s", { s: sec }) : t("推后 {s}s", { s: sec.slice(1) });
 
   return (
-    <div className="more-menu glass glass--thick" ref={ref} role="dialog" aria-label="更多">
+    <div className="more-menu glass glass--thick" ref={ref} role="dialog" aria-label={t("更多")}>
       <div className={`mm-row${p.canAdjust ? "" : " is-disabled"}`}>
         <span className="mm-label">
-          歌词时间
-          <small>{p.canAdjust ? offsetText : "这首没有时间轴"}</small>
+          {t("歌词时间")}
+          <small>{p.canAdjust ? offsetText : t("这首没有时间轴")}</small>
         </span>
-        <div className="mm-stepper" role="group" aria-label="歌词时间微调">
-          <button aria-label="歌词推后 0.1 秒" disabled={!p.canAdjust} onClick={() => p.onOffset(p.offset - 100)}>
+        <div className="mm-stepper" role="group" aria-label={t("歌词时间微调")}>
+          <button aria-label={t("歌词推后 0.1 秒")} disabled={!p.canAdjust} onClick={() => p.onOffset(p.offset - 100)}>
             −
           </button>
-          <button className="mm-reset" aria-label="恢复准时" disabled={!p.canAdjust || p.offset === 0} onClick={() => p.onOffset(0)}>
+          <button className="mm-reset" aria-label={t("恢复准时")} disabled={!p.canAdjust || p.offset === 0} onClick={() => p.onOffset(0)}>
             {p.offset === 0 ? "0.0" : (p.offset > 0 ? "+" : "") + sec}
           </button>
-          <button aria-label="歌词提前 0.1 秒" disabled={!p.canAdjust} onClick={() => p.onOffset(p.offset + 100)}>
+          <button aria-label={t("歌词提前 0.1 秒")} disabled={!p.canAdjust} onClick={() => p.onOffset(p.offset + 100)}>
             +
           </button>
         </div>
       </div>
 
       <button className="mm-link" disabled={!p.canPickLyrics} onClick={p.onPickLyrics}>
-        <span>换一个歌词</span>
+        <span>{t("换一个歌词")}</span>
         <Chevron />
       </button>
       <button className="mm-link" disabled={!p.canShare} onClick={p.onShare}>
-        <span>分享歌词</span>
+        <span>{t("分享歌词")}</span>
         <Chevron />
       </button>
 
@@ -83,13 +84,13 @@ export function MoreMenu(p: Props) {
 
       <div className="mm-block">
         <span className="mm-label">
-          睡眠定时
-          <small>{p.sleepLeft || "到点后暂停播放，拾音灯慢慢熄灭"}</small>
+          {t("睡眠定时")}
+          <small>{p.sleepLeft || t("到点后暂停播放，拾音灯慢慢熄灭")}</small>
         </span>
-        <div className="mm-chips" role="radiogroup" aria-label="睡眠定时">
+        <div className="mm-chips" role="radiogroup" aria-label={t("睡眠定时")}>
           {SLEEP_OPTIONS.map((o) => (
             <button key={String(o.id)} role="radio" aria-checked={p.sleep === o.id} className={p.sleep === o.id ? "is-on" : ""} onClick={() => p.onSleep(o.id)}>
-              {o.label}
+              {t(o.label)}
             </button>
           ))}
         </div>

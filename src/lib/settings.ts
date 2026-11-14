@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import type { LightStyle } from "../components/Lights";
 import { mixPalette } from "./palette";
+import { invoke } from "@tauri-apps/api/core";
+import { resolveLang, setLang, type LangSetting } from "./i18n";
 
 export type BackgroundKind = "fluid" | "gradient" | "image" | "cover";
 
@@ -25,6 +27,8 @@ export interface Settings {
   lyricColor: string;
   /** 有翻译时在歌词下面显示翻译 */
   showTranslation: boolean;
+  /** 界面语言：跟随系统 / 中文 / English */
+  language: LangSetting;
   /** 全屏歌词字号 0~100，50 是默认大小（实际缩放 0.7~1.3 倍） */
   lyricSize: number;
   /** 桌面歌词字号 0~100，50 是默认大小（实际缩放 0.8~1.2 倍） */
@@ -63,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lyricColorMode: "album",
   lyricColor: "#FFFFFF",
   showTranslation: true,
+  language: "system",
   lyricSize: 50,
   desktopLyricSize: 50,
   showLyrics: true,
@@ -167,6 +172,12 @@ export function useSettings(): [Settings, (patch: Partial<Settings>) => void] {
 
 /** 把设置写成 CSS 变量和根元素的类名，界面各处直接读取 */
 export function useApplySettings(s: Settings) {
+  // 语言：通知所有用 useLang 的组件重绘，并让托盘菜单换成同一种语言
+  useEffect(() => {
+    const lang = resolveLang(s.language ?? "system");
+    setLang(lang);
+    void invoke("set_language", { lang }).catch(() => {});
+  }, [s.language]);
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty(

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { t } from "../lib/i18n";
 
 interface Props {
   title: string;
@@ -24,7 +25,7 @@ export function Sheet({ title, subtitle, wide, onClose, children }: Props) {
             <strong>{title}</strong>
             {subtitle && <span>{subtitle}</span>}
           </div>
-          <button className="nl-close" aria-label="关闭" onClick={onClose}>
+          <button className="nl-close" aria-label={t("关闭")} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
