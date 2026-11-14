@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCrossfade, useIdle, useSegThumb } from "../lib/motion";
 import { LibraryView } from "../components/Shelf";
+import { NowListPanel } from "../components/NowList";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -91,6 +92,7 @@ export default function FullScreen() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [vinylMenuOpen, setVinylMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
   const fullscreen = useFullscreen();
   // 启动时桌面歌词默认不显示，点右上角按钮打开
   const [desktopVisible, setDesktopVisible] = useState(false);
@@ -119,7 +121,7 @@ export default function FullScreen() {
   const modeSegRef = useRef<HTMLDivElement>(null);
   const lightSegRef = useRef<HTMLDivElement>(null);
   // 3 秒没动鼠标就收起上下栏，只留中间；开着面板或菜单时不收
-  const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen);
+  const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen || listOpen);
   // 上下栏收起再出现时也重新量一次滑块位置
   useSegThumb(modeSegRef, `${settings.viewMode}|${idle}`);
   useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}`);
@@ -319,6 +321,32 @@ export default function FullScreen() {
             {spotify.message.text}
           </div>
         )}
+
+        {/* 右下角：播放列表（正在播放的专辑 / 歌单里的所有歌） */}
+        <button
+          className={`fs-list glass${listOpen ? " is-on" : ""}`}
+          aria-label={listOpen ? "关闭播放列表" : "播放列表"}
+          title="播放列表"
+          aria-pressed={listOpen}
+          aria-expanded={listOpen}
+          onClick={() => setListOpen((v) => !v)}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 6h11M4 11h11M4 16h7" />
+            <path d="M18 9v8.5" />
+            <circle cx="16" cy="17.5" r="2" />
+            <path d="M18 9l3-1" />
+          </svg>
+        </button>
+        <NowListPanel
+          open={listOpen}
+          onClose={() => setListOpen(false)}
+          loggedIn={spotify.account.loggedIn}
+          needsReauth={spotify.account.needsReauth}
+          onLogin={spotify.login}
+          trackKey={now ? `${now.title}|${now.artist}` : ""}
+          currentTitle={now?.title ?? ""}
+        />
 
         {/* 左下角：全屏（无边框铺满屏幕），Esc 退出 */}
         <button

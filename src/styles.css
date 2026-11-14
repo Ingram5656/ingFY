@@ -579,3 +579,55 @@ html.calm .light, html.calm .dl-glow span { animation-name: breathe !important; 
 @media (prefers-reduced-motion: reduce) {
   .shelf.is-picking .rec { transition: none; }
 }
+
+
+/* ===================== 播放列表（右下角） ===================== */
+.fs-list { position: absolute; z-index: 2; right: 48px; bottom: 58px; width: 56px; height: 56px; border-radius: 50%; border: 0; padding: 0;
+  display: grid; place-items: center; cursor: pointer; color: #fff;
+  transition: transform 0.5s var(--ease-apple), opacity 0.4s ease, background-color 0.25s ease, color 0.25s ease; }
+.fs-list:hover { filter: brightness(1.15); }
+.fs-list.is-on { background: #fff; color: var(--ink); }
+.fs-list:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.fs.is-idle .fs-list { transform: translateY(160px); opacity: 0; pointer-events: none; }
+
+.nl-panel { position: absolute; z-index: 4; right: 48px; bottom: 130px; width: 420px; height: 620px; box-sizing: border-box;
+  display: flex; flex-direction: column; border-radius: 28px; padding: 18px 10px 10px 18px;
+  transform-origin: 100% 100%; animation: nl-in 0.38s var(--ease-apple) both; }
+@keyframes nl-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
+.nl-head { display: flex; align-items: center; gap: 14px; padding: 0 8px 14px 0; border-bottom: 1px solid rgba(255,255,255,0.14); }
+.nl-cover { width: 64px; height: 64px; flex: none; border-radius: 10px; object-fit: cover; box-shadow: 0 6px 16px rgba(0,0,0,0.3); }
+.nl-cover--empty { background: linear-gradient(135deg, var(--c0, #555), var(--c1, #222)); }
+.nl-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nl-title small { font-size: 12px; color: rgba(255,255,255,0.6); }
+.nl-title strong { font-size: 18px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nl-title span { font-size: 13px; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nl-close { width: 36px; height: 36px; flex: none; border: 0; border-radius: 50%; background: transparent; color: rgba(255,255,255,0.8); cursor: pointer; display: grid; place-items: center; }
+.nl-close:hover { background: rgba(255,255,255,0.12); }
+
+.nl-list { position: relative; flex: 1; min-height: 0; margin: 8px 0 0; padding: 0 8px 0 0; list-style: none; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.3) transparent; }
+.nl-list li { margin: 0; }
+.nl-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 9px 10px; border: 0; border-radius: 12px; background: transparent;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 0.2s ease; }
+.nl-row:hover { background: rgba(255,255,255,0.1); }
+.nl-row:focus-visible { outline: 2px solid rgba(255,255,255,0.8); outline-offset: -2px; }
+.nl-row.is-on { background: rgba(255,255,255,0.16); }
+.nl-row.is-busy { opacity: 0.6; }
+.nl-idx { width: 26px; flex: none; text-align: center; font-size: 13px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+.nl-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nl-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nl-row.is-on .nl-name { color: var(--lyric-sung, #fff); font-weight: 800; }
+.nl-artist { font-size: 12.5px; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nl-dur { flex: none; font-size: 12.5px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+/* 正在播放：三根小柱子跳动 */
+.nl-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.nl-eq i { width: 3px; height: 100%; border-radius: 2px; background: var(--lyric-sung, #fff); transform-origin: 50% 100%; animation: nl-eq 0.9s ease-in-out infinite; }
+.nl-eq i:nth-child(2) { animation-delay: -0.3s; }
+.nl-eq i:nth-child(3) { animation-delay: -0.6s; }
+@keyframes nl-eq { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+.nl-hint { margin: 40px 16px; text-align: center; color: rgba(255,255,255,0.7); font-size: 15px; line-height: 1.5; }
+.nl-note { margin: 10px 8px 0 0; padding: 8px 12px; border-radius: 10px; background: rgba(0,0,0,0.18); font-size: 12.5px; color: rgba(255,255,255,0.75); line-height: 1.45; }
+.nl-note--error { color: #ffc2c2; }
+.nl-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 0 24px; text-align: center; }
+.nl-empty p { margin: 0; font-size: 15px; line-height: 1.5; color: rgba(255,255,255,0.8); }
+@media (prefers-reduced-motion: reduce) { .nl-panel { animation: none; } .nl-eq i { animation: none; } }

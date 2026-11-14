@@ -177,6 +177,19 @@ async fn spotify_play(app: AppHandle, uri: String) -> Result<(), String> {
     spotify::play_context(&token, &uri).await
 }
 
+/// 正在播放的专辑 / 歌单里的所有歌；没在 Spotify 播放时返回 null
+#[tauri::command]
+async fn spotify_now_list(app: AppHandle) -> Result<Option<spotify::NowList>, String> {
+    let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
+    spotify::now_list(&token).await
+}
+
+#[tauri::command]
+async fn spotify_play_track(app: AppHandle, context_uri: Option<String>, track_uri: String) -> Result<(), String> {
+    let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
+    spotify::play_track(&token, context_uri.as_deref(), &track_uri).await
+}
+
 #[tauri::command]
 async fn spotify_set_liked(app: AppHandle, liked: bool) -> Result<bool, String> {
     let token = access_token(&app).await?.ok_or("还没有连接 Spotify 账号")?;
@@ -275,6 +288,8 @@ pub fn run() {
             spotify_library,
             spotify_search,
             spotify_play,
+            spotify_now_list,
+            spotify_play_track,
             set_desktop_locked,
             set_desktop_visible
         ])

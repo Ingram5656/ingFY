@@ -518,7 +518,20 @@ pub async fn search(access: &str, query: &str, kind: &str) -> Result<Vec<ShelfIt
 /// 从某张专辑 / 某个歌单开始播放（需要 Premium）。
 /// 没有正在使用的设备时，挑一个设备（优先这台电脑）再播；一个设备都没有就先打开 Spotify 客户端。
 pub async fn play_context(access: &str, context_uri: &str) -> Result<(), String> {
-    let body = serde_json::json!({ "context_uri": context_uri });
+    play_body(access, serde_json::json!({ "context_uri": context_uri })).await
+}
+
+/// 播放列表里点某一首：在原来的专辑 / 歌单里跳到这首（后面接着播同一个列表）；
+/// 没有专辑 / 歌单（比如播放队列）时只播这一首。
+pub async fn play_track(access: &str, context_uri: Option<&str>, track_uri: &str) -> Result<(), String> {
+    let body = match context_uri {
+        Some(ctx) => serde_json::json!({ "context_uri": ctx, "offset": { "uri": track_uri } }),
+        None => serde_json::json!({ "uris": [track_uri] }),
+    };
+    play_body(access, body).await
+}
+
+async fn play_body(access: &str, body: serde_json::Value) -> Result<(), String> {
     let try_play = |device: Option<String>| {
         let body = body.clone();
         async move {
@@ -565,4 +578,206 @@ pub async fn play_context(access: &str, context_uri: &str) -> Result<(), String>
 /// 异步等待：放到后台线程里睡，不占用异步运行时
 async fn wait_for(d: Duration) {
     let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(d)).await;
+}
+
+// ---------- 播放列表（正在播放的专辑 / 歌单里的所有歌） ----------
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListTrack {
+    pub uri: String,
+    pub name: String,
+    pub artists: String,
+    pub duration_ms: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NowList {
+    /// "album" / "playlist" / "queue"（不是从专辑或歌单播放时，显示接下来的播放队列）
+    pub kind: String,
+    /// 点某首歌时要带上的专辑 / 歌单 URI；播放队列为空
+    pub context_uri: Option<String>,
+    pub title: String,
+    pub subtitle: String,
+    pub image: Option<String>,
+    pub tracks: Vec<ListTrack>,
+    /// 正在播放的那首
+    pub current_uri: Option<String>,
+    /// 读取歌单内容失败时的说明（比如别人的歌单 Spotify 不再开放内容）
+    pub note: Option<String>,
+}
+
+fn list_track(t: &serde_json::Value) -> Option<ListTrack> {
+    if t.is_null() {
+        return None;
+    }
+    // 播客单集没有 artists，用节目名代替
+    let artists = t
+        .get("artists")
+        .and_then(|x| x.as_array())
+        .map(|xs| xs.iter().filter_map(|x| x.get("name")?.as_str()).collect::<Vec<_>>().join(" · "))
+        .filter(|s| !s.is_empty())
+        .or_else(|| t.pointer("/show/name").and_then(|x| x.as_str()).map(str::to_string))
+        .unwrap_or_default();
+    Some(ListTrack {
+        uri: t.get("uri")?.as_str()?.to_string(),
+        name: t.get("name")?.as_str()?.to_string(),
+        artists,
+        duration_ms: t.get("duration_ms").and_then(|d| d.as_i64()).unwrap_or(0),
+    })
+}
+
+/// spotify:album:xxx → ("album", "xxx")
+fn split_uri(uri: &str) -> Option<(&str, &str)> {
+    let mut it = uri.split(':');
+    if it.next()? != "spotify" {
+        return None;
+    }
+    let kind = it.next()?;
+    let id = it.next()?;
+    Some((kind, id))
+}
+
+/// 正在播放的歌所在的专辑 / 歌单，以及里面所有的歌（专辑最多 200 首，歌单最多 500 首）。
+/// 没在 Spotify 播放时返回 None。
+pub async fn now_list(access: &str) -> Result<Option<NowList>, String> {
+    let resp = client()?
+        .get("https://api.spotify.com/v1/me/player")
+        .bearer_auth(access)
+        .send()
+        .await
+        .map_err(|_| "连不上 Spotify，检查一下网络".to_string())?;
+    if resp.status() == reqwest::StatusCode::NO_CONTENT {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(api_error(resp.status().as_u16(), "读取播放状态"));
+    }
+    let player: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let current_uri = player.pointer("/item/uri").and_then(|x| x.as_str()).map(str::to_string);
+    let context_uri = player.pointer("/context/uri").and_then(|x| x.as_str()).map(str::to_string);
+
+    let mut note = None;
+    if let Some(ctx) = context_uri.as_deref() {
+        match split_uri(ctx) {
+            Some(("album", id)) => match album_list(access, id, ctx).await {
+                Ok(mut l) => {
+                    l.current_uri = current_uri;
+                    return Ok(Some(l));
+                }
+                Err(e) => note = Some(e),
+            },
+            Some(("playlist", id)) => match playlist_list(access, id, ctx).await {
+                Ok(mut l) => {
+                    l.current_uri = current_uri;
+                    return Ok(Some(l));
+                }
+                Err(e) => note = Some(e),
+            },
+            _ => {}
+        }
+    }
+
+    // 其他情况（单曲、电台、"已点赞的歌曲"、读不到的歌单）：显示播放队列
+    let mut l = queue_list(access).await?;
+    l.current_uri = current_uri;
+    l.note = note;
+    Ok(Some(l))
+}
+
+async fn album_list(access: &str, id: &str, ctx: &str) -> Result<NowList, String> {
+    let album = get_json(&format!("https://api.spotify.com/v1/albums/{id}"), &[], access, "读取专辑").await?;
+    let mut tracks: Vec<ListTrack> = album
+        .pointer("/tracks/items")
+        .and_then(|x| x.as_array())
+        .map(|xs| xs.iter().filter_map(list_track).collect())
+        .unwrap_or_default();
+    // 超过 50 首的专辑接着往下取
+    let total = album.pointer("/tracks/total").and_then(|x| x.as_i64()).unwrap_or(0) as usize;
+    let mut offset = tracks.len();
+    while offset < total.min(200) {
+        let v = get_json(
+            &format!("https://api.spotify.com/v1/albums/{id}/tracks"),
+            &[("limit", "50".into()), ("offset", offset.to_string())],
+            access,
+            "读取专辑",
+        )
+        .await?;
+        let page: Vec<ListTrack> = v.get("items").and_then(|x| x.as_array()).map(|xs| xs.iter().filter_map(list_track).collect()).unwrap_or_default();
+        if page.is_empty() {
+            break;
+        }
+        offset += page.len();
+        tracks.extend(page);
+    }
+    let item = album_item(&album);
+    Ok(NowList {
+        kind: "album".into(),
+        context_uri: Some(ctx.to_string()),
+        title: item.as_ref().map(|i| i.name.clone()).unwrap_or_default(),
+        subtitle: item.as_ref().map(|i| i.subtitle.clone()).unwrap_or_default(),
+        image: item.and_then(|i| i.image),
+        tracks,
+        current_uri: None,
+        note: None,
+    })
+}
+
+async fn playlist_list(access: &str, id: &str, ctx: &str) -> Result<NowList, String> {
+    let meta = get_json(
+        &format!("https://api.spotify.com/v1/playlists/{id}"),
+        &[("fields", "uri,name,owner(display_name,id),images".into())],
+        access,
+        "读取歌单",
+    )
+    .await?;
+    let mut tracks = Vec::new();
+    for page in 0..10 {
+        let v = get_json(
+            &format!("https://api.spotify.com/v1/playlists/{id}/items"),
+            &[("limit", "50".into()), ("offset", (page * 50).to_string())],
+            access,
+            "读取歌单里的歌",
+        )
+        .await?;
+        let items = v.get("items").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+        // 2026 年 2 月起每一项里的 track 改名为 item，两种都认
+        tracks.extend(items.iter().filter_map(|it| it.get("item").or_else(|| it.get("track")).and_then(list_track)));
+        if v.get("next").map_or(true, |n| n.is_null()) {
+            break;
+        }
+    }
+    let item = playlist_item(&meta);
+    Ok(NowList {
+        kind: "playlist".into(),
+        context_uri: Some(ctx.to_string()),
+        title: item.as_ref().map(|i| i.name.clone()).unwrap_or_default(),
+        subtitle: item.as_ref().map(|i| i.subtitle.clone()).unwrap_or_default(),
+        image: item.and_then(|i| i.image),
+        tracks,
+        current_uri: None,
+        note: None,
+    })
+}
+
+async fn queue_list(access: &str) -> Result<NowList, String> {
+    let v = get_json("https://api.spotify.com/v1/me/player/queue", &[], access, "读取播放队列").await?;
+    let mut tracks: Vec<ListTrack> = Vec::new();
+    if let Some(cur) = v.get("currently_playing").and_then(list_track) {
+        tracks.push(cur);
+    }
+    if let Some(xs) = v.get("queue").and_then(|x| x.as_array()) {
+        tracks.extend(xs.iter().filter_map(list_track));
+    }
+    Ok(NowList {
+        kind: "queue".into(),
+        context_uri: None,
+        title: "播放队列".into(),
+        subtitle: "接下来要播的歌".into(),
+        image: None,
+        tracks,
+        current_uri: None,
+        note: None,
+    })
 }
