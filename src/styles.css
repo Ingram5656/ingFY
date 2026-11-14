@@ -983,8 +983,8 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 .isl-lights .lights--wave .light { width: max(1.5px, calc(3 * var(--u) * var(--thick, 1))); box-shadow: 0 0 calc(6 * var(--u)) var(--c); }
 
 /* 收起：左边封面，右边一行歌词 */
-.isl-compact { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; gap: calc(11 * var(--u));
-  padding: 0 calc(20 * var(--u)) 0 calc(6 * var(--u));
+.isl-compact { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; gap: calc(11 * var(--u));
+  padding: 0 calc(16 * var(--u));
   transition: opacity 0.22s ease, transform 0.42s var(--isl-ease), filter 0.3s ease; }
 .is-open .isl-compact { opacity: 0; transform: scale(0.86); filter: blur(4px); pointer-events: none; }
 /* 展开：封面、歌名、歌词，下面进度条和播放控制 */
@@ -999,6 +999,8 @@ html[data-window="island"], html[data-window="island"] body { background: transp
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12); }
 .isl-full .isl-art { border-radius: calc(14 * var(--u)); }
 .isl-text { flex: 1; min-width: 0; }
+/* 收起时封面和歌词作为一个整体居中：歌词只占自己需要的宽度，太长时才缩小字号 */
+.isl-compact .isl-text { flex: 0 1 auto; }
 .isl-lyric { margin: 0; padding: 0.12em 0 0.06em; font-size: calc(17 * var(--u)); font-weight: 800; line-height: 1.25;
   white-space: nowrap; overflow-x: clip; overflow-y: visible; text-overflow: ellipsis;
   --k-sung: var(--isl-sung, #fff); --k-rest: rgba(255,255,255,0.5); --line-on: 1; color: var(--isl-sung, #fff);
