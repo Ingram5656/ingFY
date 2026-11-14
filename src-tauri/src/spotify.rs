@@ -18,8 +18,40 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// ingfy 自带的 Spotify 应用。Spotify 开发模式下只有加进应用用户名单的账号能登录，
+/// 其他人可以在设置里填自己申请的 Client ID（见 client_id_valid）。
 pub const CLIENT_ID: &str = "b8fb12eb68ea41f6abaf0b18d42613f7";
-const REDIRECT_URI: &str = "http://127.0.0.1:43821/callback";
+pub const REDIRECT_URI: &str = "http://127.0.0.1:43821/callback";
+
+/// Client ID 是 32 位十六进制
+pub fn client_id_valid(id: &str) -> bool {
+    id.len() == 32 && id.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// 自定义 Client ID 存在配置目录的 spotify_client.txt 里
+pub fn load_client_id(path: &PathBuf) -> Option<String> {
+    let id = std::fs::read_to_string(path).ok()?.trim().to_lowercase();
+    if client_id_valid(&id) {
+        Some(id)
+    } else {
+        None
+    }
+}
+
+pub fn save_client_id(path: &PathBuf, id: Option<&str>) -> Result<(), String> {
+    match id {
+        Some(id) => {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(path, id).map_err(|e| e.to_string())
+        }
+        None => {
+            let _ = std::fs::remove_file(path);
+            Ok(())
+        }
+    }
+}
 const LISTEN_ADDR: &str = "127.0.0.1:43821";
 /// 2026 年 2 月的新收藏接口 /me/library 合并了歌曲、专辑、关注、歌单，
 /// 官方文档要求同时具备 user-library-modify、user-follow-modify、playlist-modify-public 三个权限，
@@ -42,9 +74,20 @@ pub struct Tokens {
     /// 授权时实际拿到的权限，空格分隔
     #[serde(default)]
     pub scope: String,
+    /// 用哪个 Client ID 登录的（续期必须用同一个）；旧版本存的为空，按自带的算
+    #[serde(default)]
+    pub client_id: String,
 }
 
 impl Tokens {
+    pub fn client(&self) -> &str {
+        if self.client_id.is_empty() {
+            CLIENT_ID
+        } else {
+            &self.client_id
+        }
+    }
+
     /// 旧版本登录时没有申请新收藏接口需要的权限，需要重新连接
     pub fn needs_reauth(&self) -> bool {
         REQUIRED_SCOPES.iter().any(|need| !self.scope.split_whitespace().any(|s| s == *need))
@@ -56,8 +99,24 @@ impl Tokens {
 pub struct AccountStatus {
     pub logged_in: bool,
     pub display_name: String,
-    /// 已登录但权限不够，需要重新连接
+    /// 已登录但权限不够，或者登录已过期，需要重新连接
     pub needs_reauth: bool,
+    /// 登录已过期（开发模式下大约半年一次，或者在 Spotify 账号里撤销了授权）
+    pub expired: bool,
+    /// 正在使用自己填的 Client ID
+    pub custom_client: bool,
+}
+
+/// 续期失败的原因：过期 / 被撤销，还是只是网络问题
+pub enum RefreshError {
+    Expired,
+    Other(String),
+}
+
+impl From<String> for RefreshError {
+    fn from(e: String) -> Self {
+        RefreshError::Other(e)
+    }
 }
 
 #[derive(Deserialize)]
@@ -175,7 +234,7 @@ fn wait_for_callback(listener: TcpListener) -> Result<(String, String), String> 
 }
 
 /// 完整登录流程：打开浏览器授权，等回调，换取 token。
-pub async fn login() -> Result<Tokens, String> {
+pub async fn login(client_id: &str) -> Result<Tokens, String> {
     let verifier = random_string(48)?;
     let challenge = b64url(&Sha256::digest(verifier.as_bytes()));
     let state = random_string(16)?;
@@ -186,7 +245,7 @@ pub async fn login() -> Result<Tokens, String> {
     let auth_url = reqwest::Url::parse_with_params(
         "https://accounts.spotify.com/authorize",
         &[
-            ("client_id", CLIENT_ID),
+            ("client_id", client_id),
             ("response_type", "code"),
             ("redirect_uri", REDIRECT_URI),
             ("code_challenge_method", "S256"),
@@ -211,14 +270,20 @@ pub async fn login() -> Result<Tokens, String> {
             ("grant_type", "authorization_code"),
             ("code", code.as_str()),
             ("redirect_uri", REDIRECT_URI),
-            ("client_id", CLIENT_ID),
+            ("client_id", client_id),
             ("code_verifier", verifier.as_str()),
         ])
         .send()
         .await
         .map_err(|e| e.to_string())?
         .error_for_status()
-        .map_err(|e| format!("换取登录凭证失败：{e}"))?
+        .map_err(|e| {
+            if e.status().map_or(false, |c| c.as_u16() == 400) {
+                "换取登录凭证失败：请确认 Client ID 正确，并且在 Spotify 开发者后台填了回调地址 http://127.0.0.1:43821/callback".to_string()
+            } else {
+                format!("换取登录凭证失败：{e}")
+            }
+        })?
         .json()
         .await
         .map_err(|e| e.to_string())?;
@@ -229,6 +294,7 @@ pub async fn login() -> Result<Tokens, String> {
         expires_at: now_secs() + resp.expires_in.saturating_sub(60),
         display_name: String::new(),
         scope: resp.scope.unwrap_or_default(),
+        client_id: client_id.to_string(),
     };
     tokens.display_name = fetch_display_name(&tokens.access_token).await.unwrap_or_default();
     Ok(tokens)
@@ -255,25 +321,31 @@ async fn fetch_display_name(access: &str) -> Result<String, String> {
 }
 
 /// access_token 快过期时用 refresh_token 续期。返回是否更新过。
-pub async fn ensure_fresh(tokens: &mut Tokens) -> Result<bool, String> {
+/// Spotify 回 400 / 401（invalid_grant）说明 refresh_token 已经不能用了：
+/// 开发模式下登录最长有效半年，或者用户在 Spotify 账号里撤销了授权。
+pub async fn ensure_fresh(tokens: &mut Tokens) -> Result<bool, RefreshError> {
     if now_secs() < tokens.expires_at {
         return Ok(false);
     }
-    let resp: TokenResponse = client()?
+    let client_id = tokens.client().to_string();
+    let resp = client()?
         .post("https://accounts.spotify.com/api/token")
         .form(&[
             ("grant_type", "refresh_token"),
             ("refresh_token", tokens.refresh_token.as_str()),
-            ("client_id", CLIENT_ID),
+            ("client_id", client_id.as_str()),
         ])
         .send()
         .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|_| "登录已失效，请在设置里重新连接 Spotify".to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| RefreshError::Other("连不上 Spotify，检查一下网络".into()))?;
+    let code = resp.status().as_u16();
+    if code == 400 || code == 401 {
+        return Err(RefreshError::Expired);
+    }
+    if !resp.status().is_success() {
+        return Err(RefreshError::Other(format!("续期登录失败（Spotify 返回 {code}）")));
+    }
+    let resp: TokenResponse = resp.json().await.map_err(|e| RefreshError::Other(e.to_string()))?;
     tokens.access_token = resp.access_token;
     if let Some(r) = resp.refresh_token {
         tokens.refresh_token = r;

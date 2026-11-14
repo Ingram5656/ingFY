@@ -460,9 +460,11 @@ export function SettingsPanel(p: Props) {
       <>
         <Group
           foot={
-            p.account.loggedIn
-              ? "连接后可以收藏歌曲、浏览曲库和专辑、查看播放列表；从专辑或歌单开始播放需要 Premium。"
-              : "歌词、拾音灯、桌面歌词不需要连接 Spotify，任何播放器都能用。"
+            p.account.expired
+              ? "Spotify 对开发模式应用的登录最长保留半年，或者你在 Spotify 账号里撤销了授权。重新连接一次就好。"
+              : p.account.loggedIn
+                ? "连接后可以收藏歌曲、浏览曲库和专辑、查看播放列表；从专辑或歌单开始播放需要 Premium。"
+                : "歌词、拾音灯、桌面歌词不需要连接 Spotify，任何播放器都能用。"
           }
         >
           <div className="st-cell st-account">
@@ -472,15 +474,12 @@ export function SettingsPanel(p: Props) {
               </svg>
             </span>
             <span className="st-option-text">
-              {p.account.loggedIn && p.account.needsReauth ? (
+              {p.account.loggedIn ? (
                 <>
                   <span>{p.account.displayName}</span>
-                  <small>需要重新连接一次，授予新的权限</small>
-                </>
-              ) : p.account.loggedIn ? (
-                <>
-                  <span>{p.account.displayName}</span>
-                  <small>已连接</small>
+                  <small className={p.account.needsReauth ? "st-warn" : undefined}>
+                    {p.account.expired ? "登录已过期" : p.account.needsReauth ? "需要重新连接一次，授予新的权限" : "已连接"}
+                  </small>
                 </>
               ) : (
                 <>
@@ -504,6 +503,7 @@ export function SettingsPanel(p: Props) {
             )}
           </div>
         </Group>
+        <ClientSection />
       </>
     ),
     general: <GeneralSection initial={p.updateInfo} />,
@@ -528,7 +528,7 @@ export function SettingsPanel(p: Props) {
               </span>
               <span>{n.label}</span>
               {n.id === "general" && p.updateInfo?.hasUpdate && <span className="st-badge" aria-label="有新版本" />}
-              {n.id === "spotify" && p.account.needsReauth && <span className="st-badge" aria-label="需要重新连接" />}
+              {n.id === "spotify" && p.account.loggedIn && p.account.needsReauth && <span className="st-badge" aria-label="需要重新连接" />}
             </button>
           ))}
         </nav>
@@ -547,6 +547,121 @@ export function SettingsPanel(p: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ 自己的 Spotify 应用
+
+const DASHBOARD = "https://developer.spotify.com/dashboard";
+
+/**
+ * 登录方式：用 ingfy 自带的 Spotify 应用（只有名单里的最多 5 个账号能登录），
+ * 或者填自己在开发者后台建的应用的 Client ID（不占名额，需要自己有 Premium）。
+ */
+function ClientSection() {
+  const [info, setInfo] = useState<{ clientId: string | null; redirectUri: string } | null>(null);
+  const [own, setOwn] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    invoke<{ clientId: string | null; redirectUri: string }>("spotify_client_get")
+      .then((r) => {
+        setInfo(r);
+        setOwn(!!r.clientId);
+        setDraft(r.clientId ?? "");
+      })
+      .catch(() => {});
+  }, []);
+
+  const apply = async (id: string | null) => {
+    try {
+      await invoke("spotify_client_set", { clientId: id });
+      setInfo((i) => (i ? { ...i, clientId: id } : i));
+      setMsg({ text: id ? "已保存。点上面的「连接 Spotify」，用你自己的应用登录。" : "已改回 ingfy 自带的应用，需要重新连接。" });
+    } catch (e) {
+      setMsg({ text: String(e), error: true });
+    }
+  };
+
+  const toggle = (v: boolean) => {
+    setOwn(v);
+    setMsg(null);
+    // 关掉时如果之前保存过自己的 ID，就改回自带的
+    if (!v && info?.clientId) void apply(null);
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(info?.redirectUri ?? "http://127.0.0.1:43821/callback");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* 剪贴板不可用就算了，地址就在旁边 */
+    }
+  };
+
+  const saved = info?.clientId ?? null;
+  const dirty = draft.trim().toLowerCase() !== (saved ?? "");
+  return (
+    <Group
+      title="登录方式"
+      foot={
+        msg ? (
+          <span className={msg.error ? "st-warn" : undefined}>{msg.text}</span>
+        ) : (
+          "ingfy 自带的应用处于 Spotify 的开发模式，只有被加进用户名单的账号能登录（最多 5 人）。用自己的应用不占名额，但需要你有 Spotify Premium。换应用后需要重新连接。"
+        )
+      }
+    >
+      <Toggle label="使用自己的 Client ID" sub={saved ? "正在使用你自己的 Spotify 应用" : "现在用的是 ingfy 自带的应用"} on={own} onChange={toggle} />
+      {own && (
+        <>
+          <div className="st-cell">
+            <span className="st-cell-label">Client ID</span>
+            <div className="st-input-row">
+              <input
+                className="st-input"
+                value={draft}
+                placeholder="粘贴 32 位 Client ID"
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  setMsg(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && dirty && draft.trim() && void apply(draft.trim())}
+              />
+              <button className="st-btn st-btn--primary" disabled={!dirty || !draft.trim()} onClick={() => void apply(draft.trim())}>
+                保存
+              </button>
+            </div>
+          </div>
+          <div className="st-cell">
+            <span className="st-cell-label">怎么申请（两分钟）</span>
+            <ol className="st-steps">
+              <li>
+                打开 Spotify 开发者后台，用你的 Spotify 账号登录。
+                <button className="st-link" onClick={() => void invoke("open_url", { url: DASHBOARD })}>
+                  打开开发者后台
+                </button>
+              </li>
+              <li>点 Create app，名字和描述随便填。</li>
+              <li>
+                Redirect URI 填
+                <code className="st-code">{info?.redirectUri ?? "http://127.0.0.1:43821/callback"}</code>
+                <button className="st-chip" onClick={copy}>
+                  {copied ? "已复制" : "复制"}
+                </button>
+              </li>
+              <li>"Which API/SDKs are you planning to use" 勾选 Web API，同意条款后保存。</li>
+              <li>在应用的 Settings 里复制 Client ID，粘贴到上面，点保存，然后连接 Spotify。</li>
+            </ol>
+          </div>
+        </>
+      )}
+    </Group>
   );
 }
 

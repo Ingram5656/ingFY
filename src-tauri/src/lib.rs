@@ -16,6 +16,11 @@ struct AppState {
     snapshot: Mutex<Snapshot>,
     spotify: Mutex<Option<Tokens>>,
     tokens_path: Mutex<PathBuf>,
+    /// 用户自己填的 Spotify Client ID，没填为 None（用自带的）
+    client_id: Mutex<Option<String>>,
+    client_path: Mutex<PathBuf>,
+    /// 登录已过期：续期被 Spotify 拒绝了，需要重新连接
+    spotify_expired: Mutex<bool>,
 }
 
 // ---------- 命令（前端用 invoke 调用） ----------
@@ -99,10 +104,64 @@ fn set_desktop_visible(app: AppHandle, visible: bool) -> Result<(), String> {
 // ---------- Spotify 账号 ----------
 
 fn account_status(state: &AppState) -> AccountStatus {
+    let custom_client = state.client_id.lock().unwrap().is_some();
+    let expired = *state.spotify_expired.lock().unwrap();
     match state.spotify.lock().unwrap().as_ref() {
-        Some(t) => AccountStatus { logged_in: true, display_name: t.display_name.clone(), needs_reauth: t.needs_reauth() },
-        None => AccountStatus::default(),
+        Some(t) => AccountStatus {
+            logged_in: true,
+            display_name: t.display_name.clone(),
+            needs_reauth: expired || t.needs_reauth(),
+            expired,
+            custom_client,
+        },
+        None => AccountStatus { custom_client, ..Default::default() },
     }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClientInfo {
+    /// 自己填的 Client ID，没填为 null
+    client_id: Option<String>,
+    redirect_uri: String,
+}
+
+#[tauri::command]
+fn spotify_client_get(state: State<AppState>) -> ClientInfo {
+    ClientInfo { client_id: state.client_id.lock().unwrap().clone(), redirect_uri: spotify::REDIRECT_URI.into() }
+}
+
+/// 设置或清除自己的 Client ID。换了应用以后旧的登录不能再用，顺便断开。
+#[tauri::command]
+fn spotify_client_set(app: AppHandle, state: State<AppState>, client_id: Option<String>) -> Result<AccountStatus, String> {
+    let id = client_id.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    if let Some(id) = &id {
+        if !spotify::client_id_valid(id) {
+            return Err("Client ID 应该是 32 位的字母和数字，复制的时候检查一下有没有多余的字符".into());
+        }
+    }
+    let changed = *state.client_id.lock().unwrap() != id;
+    let path = state.client_path.lock().unwrap().clone();
+    spotify::save_client_id(&path, id.as_deref())?;
+    *state.client_id.lock().unwrap() = id;
+    if changed {
+        let tokens_path = state.tokens_path.lock().unwrap().clone();
+        spotify::delete_tokens(&tokens_path);
+        *state.spotify.lock().unwrap() = None;
+        *state.spotify_expired.lock().unwrap() = false;
+    }
+    let status = account_status(&state);
+    let _ = app.emit("spotify-account", status.clone());
+    Ok(status)
+}
+
+/// 用系统浏览器打开链接（只允许 https，比如 Spotify 开发者后台）
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("只能打开 https 链接".into());
+    }
+    open::that(url).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -112,11 +171,13 @@ fn spotify_status(state: State<AppState>) -> AccountStatus {
 
 #[tauri::command]
 async fn spotify_login(app: AppHandle) -> Result<AccountStatus, String> {
-    let tokens = spotify::login().await?;
     let state = app.state::<AppState>();
+    let client_id = state.client_id.lock().unwrap().clone().unwrap_or_else(|| spotify::CLIENT_ID.to_string());
+    let tokens = spotify::login(&client_id).await?;
     let path = state.tokens_path.lock().unwrap().clone();
     spotify::save_tokens(&path, &tokens)?;
     *state.spotify.lock().unwrap() = Some(tokens);
+    *state.spotify_expired.lock().unwrap() = false;
     let status = account_status(&state);
     let _ = app.emit("spotify-account", status.clone());
     Ok(status)
@@ -127,19 +188,35 @@ fn spotify_logout(app: AppHandle, state: State<AppState>) -> AccountStatus {
     let path = state.tokens_path.lock().unwrap().clone();
     spotify::delete_tokens(&path);
     *state.spotify.lock().unwrap() = None;
-    let status = AccountStatus::default();
+    *state.spotify_expired.lock().unwrap() = false;
+    let status = account_status(&state);
     let _ = app.emit("spotify-account", status.clone());
     status
 }
+
+const EXPIRED_MSG: &str = "Spotify 登录已过期，请在设置里重新连接";
 
 /// 拿一个有效的 access_token，需要时自动续期并保存
 async fn access_token(app: &AppHandle) -> Result<Option<String>, String> {
     let state = app.state::<AppState>();
     let Some(mut tokens) = state.spotify.lock().unwrap().clone() else { return Ok(None) };
-    if spotify::ensure_fresh(&mut tokens).await? {
-        let path = state.tokens_path.lock().unwrap().clone();
-        let _ = spotify::save_tokens(&path, &tokens);
-        *state.spotify.lock().unwrap() = Some(tokens.clone());
+    if *state.spotify_expired.lock().unwrap() {
+        return Err(EXPIRED_MSG.into());
+    }
+    match spotify::ensure_fresh(&mut tokens).await {
+        Ok(true) => {
+            let path = state.tokens_path.lock().unwrap().clone();
+            let _ = spotify::save_tokens(&path, &tokens);
+            *state.spotify.lock().unwrap() = Some(tokens.clone());
+        }
+        Ok(false) => {}
+        Err(spotify::RefreshError::Expired) => {
+            // 记下来并通知界面：设置里显示"登录已过期"，各处的 Spotify 功能提示重新连接
+            *state.spotify_expired.lock().unwrap() = true;
+            let _ = app.emit("spotify-account", account_status(&state));
+            return Err(EXPIRED_MSG.into());
+        }
+        Err(spotify::RefreshError::Other(e)) => return Err(e),
     }
     Ok(Some(tokens.access_token))
 }
@@ -574,7 +651,10 @@ pub fn run() {
             autostart_enabled,
             set_autostart,
             check_update,
-            install_update
+            install_update,
+            spotify_client_get,
+            spotify_client_set,
+            open_url
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -583,6 +663,8 @@ pub fn run() {
                 let path = dir.join("spotify.json");
                 let state = app.state::<AppState>();
                 *state.spotify.lock().unwrap() = spotify::load_tokens(&path);
+                *state.client_id.lock().unwrap() = spotify::load_client_id(&dir.join("spotify_client.txt"));
+                *state.client_path.lock().unwrap() = dir.join("spotify_client.txt");
                 *state.tokens_path.lock().unwrap() = path;
             }
             place_desktop_window(&handle);

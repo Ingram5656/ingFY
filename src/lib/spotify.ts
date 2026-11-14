@@ -7,8 +7,12 @@ import { trackKey } from "./types";
 export interface AccountStatus {
   loggedIn: boolean;
   displayName: string;
-  /** 已登录但缺少新版收藏接口需要的权限，要重新连接 */
+  /** 已登录但缺少新权限、或者登录已过期，要重新连接 */
   needsReauth: boolean;
+  /** 登录已过期（开发模式下大约半年一次） */
+  expired?: boolean;
+  /** 正在使用自己填的 Client ID */
+  customClient?: boolean;
 }
 
 /**

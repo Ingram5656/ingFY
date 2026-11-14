@@ -336,7 +336,11 @@ export default function FullScreen() {
                 <circle cx="18.5" cy="12" r="1.7" />
               </svg>
             </button>
-            <button className={`ibtn${updateInfo?.hasUpdate ? " has-dot" : ""}`} aria-label={updateInfo?.hasUpdate ? "设置（有新版本）" : "设置"} onClick={() => setSettingsOpen(true)}>
+            <button
+              className={`ibtn${updateInfo?.hasUpdate || (spotify.account.loggedIn && spotify.account.needsReauth) ? " has-dot" : ""}`}
+              aria-label={updateInfo?.hasUpdate ? "设置（有新版本）" : spotify.account.loggedIn && spotify.account.needsReauth ? "设置（Spotify 需要重新连接）" : "设置"}
+              onClick={() => setSettingsOpen(true)}
+            >
               <GearIcon />
             </button>
           </div>

@@ -912,3 +912,19 @@ span.nl-cover { position: relative; overflow: hidden; display: block; }
 .st-card .st-presets { gap: 8px; }
 .st-card .st-slider { gap: 6px; }
 .st-card .st-slider > span { font-size: 14px; color: #fff; }
+
+/* 设置：Spotify 登录方式 */
+.st-warn { color: #ffb4a8 !important; }
+.st-input-row { display: flex; gap: 10px; }
+.st-input { flex: 1; min-width: 0; height: 44px; box-sizing: border-box; padding: 0 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(0,0,0,0.18); color: #fff; font: inherit; font-size: 15px; letter-spacing: 0.02em; outline: none; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+.st-input::placeholder { color: rgba(255,255,255,0.4); letter-spacing: 0; }
+.st-input:focus { border-color: rgba(255,255,255,0.55); box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
+.st-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.85); }
+.st-steps li::marker { color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+.st-steps .st-link { margin-left: 8px; font-size: 14px; padding: 0; }
+.st-code { margin: 0 6px; padding: 2px 8px; border-radius: 7px; background: rgba(0,0,0,0.25); font-family: ui-monospace, Consolas, monospace; font-size: 13px; white-space: nowrap; }
+.st-chip { height: 26px; padding: 0 10px; border: 0; border-radius: 999px; background: rgba(255,255,255,0.16); color: #fff; font: inherit; font-size: 12.5px;
+  cursor: pointer; transition: background-color 0.2s ease, transform 0.15s var(--ease-apple); }
+.st-chip:hover { background: rgba(255,255,255,0.24); }
+.st-chip:active { transform: scale(0.94); }

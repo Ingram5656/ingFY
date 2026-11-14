@@ -119,13 +119,18 @@ Windows 上的动态歌词软件，液态玻璃风格。读取电脑上正在播
 - 曲库和专辑界面、右下角播放列表
 - 点封面或歌名直接开始播放（**需要 Spotify Premium**，这是 Spotify 接口的限制）
 
-连接方法：**设置 → Spotify 账号 → 连接 Spotify**，浏览器里同意授权后自动回到 ingfy。登录信息只保存在你自己电脑上。
+连接方法：**设置 → Spotify → 连接 Spotify**，浏览器里同意授权后自动回到 ingfy。登录信息只保存在你自己电脑上。
 
-> **注意**：ingfy 使用的 Spotify 应用目前处于 Spotify 的"开发模式"，只有被加入应用用户名单的账号才能登录。如果你 fork 了这个项目给自己用，最简单的办法是到 [Spotify 开发者后台](https://developer.spotify.com/dashboard) 新建一个应用：
-> 1. Redirect URI 填 `http://127.0.0.1:43821/callback`，勾选 Web API。
-> 2. 把得到的 Client ID 替换掉 `src-tauri/src/spotify.rs` 里的 `CLIENT_ID`，重新编译。
->
-> 不需要 Client Secret（用的是 PKCE 授权方式），也**不要**把 Client Secret 放进代码里。
+**谁能登录**：ingfy 自带的 Spotify 应用处于 Spotify 的"开发模式"，只有被加进应用用户名单的账号能登录（Spotify 规定最多 5 人）。不在名单里的话，可以用自己的应用，不占名额，也不用改代码：
+
+1. 打开 [Spotify 开发者后台](https://developer.spotify.com/dashboard)，用你的 Spotify 账号登录（需要 Premium）。
+2. 点 **Create app**，名字随便填；Redirect URI 填 `http://127.0.0.1:43821/callback`；API 勾选 **Web API**，保存。
+3. 在应用的 Settings 里复制 **Client ID**。
+4. 回到 ingfy：**设置 → Spotify → 使用自己的 Client ID**，粘贴、保存，然后连接 Spotify。
+
+设置里有同样的步骤和一键复制回调地址的按钮。不需要 Client Secret（用的是 PKCE 授权方式），也**不要**把 Client Secret 填到任何地方。
+
+**半年重新连接一次**：Spotify 对开发模式应用的登录最长保留半年。到期后设置里会显示"登录已过期"，点"重新连接"即可。
 
 ---
 
