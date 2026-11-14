@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import type { Settings, BackgroundKind } from "../lib/settings";
 import { downscaleImage, saveBackgroundImage } from "../lib/settings";
 import type { LightStyle } from "./Lights";
@@ -46,8 +47,10 @@ function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
   const [state, setState] = useState<"idle" | "checking" | "installing">("idle");
   const [msg, setMsg] = useState("");
 
+  const [version, setVersion] = useState("");
   useEffect(() => {
     invoke<boolean>("autostart_enabled").then(setAutostart).catch(() => setAutostart(false));
+    getVersion().then(setVersion).catch(() => {});
   }, []);
 
   const toggleAutostart = async () => {
@@ -109,7 +112,7 @@ function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
         <div className="st-cell st-update">
           <span className="st-option-text">
             <span>
-              ingfy {info?.current ?? ""}
+              ingfy {info?.current ?? version}
               {info?.hasUpdate && <em className="st-new">新版本 {info.latest}</em>}
             </span>
             <small>{info?.hasUpdate ? "下载后会自动打开安装程序" : "从 GitHub 检查新版本"}</small>
@@ -125,7 +128,59 @@ function GeneralSection({ initial }: { initial?: UpdateInfo | null }) {
           )}
         </div>
       </Group>
+      <Credits />
     </>
+  );
+}
+
+const TAGLINE_KEY = "ingfy.tagline";
+
+/** 关于页最下面的署名，以及一句自己写的话（点一下就能改，存在本地） */
+function Credits() {
+  const [line, setLine] = useState(() => {
+    try {
+      return localStorage.getItem(TAGLINE_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [editing, setEditing] = useState(false);
+  const save = (v: string) => {
+    const t = v.trim();
+    setLine(t);
+    setEditing(false);
+    try {
+      if (t) localStorage.setItem(TAGLINE_KEY, t);
+      else localStorage.removeItem(TAGLINE_KEY);
+    } catch {
+      /* 存不下就算了 */
+    }
+  };
+  return (
+    <footer className="st-credits">
+      <p className="st-made">
+        Made by <strong>Ingram</strong> &amp; <strong>Claude</strong>
+      </p>
+      {editing ? (
+        <input
+          className="st-input st-tagline-input"
+          autoFocus
+          defaultValue={line}
+          maxLength={60}
+          placeholder="写一句你喜欢的话"
+          aria-label="写一句你喜欢的话"
+          onBlur={(e) => save(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save((e.target as HTMLInputElement).value);
+            if (e.key === "Escape") setEditing(false);
+          }}
+        />
+      ) : (
+        <button className={`st-tagline${line ? "" : " is-empty"}`} onClick={() => setEditing(true)} title="点一下修改">
+          {line || "点这里写一句你喜欢的话"}
+        </button>
+      )}
+    </footer>
   );
 }
 

@@ -928,3 +928,13 @@ span.nl-cover { position: relative; overflow: hidden; display: block; }
   cursor: pointer; transition: background-color 0.2s ease, transform 0.15s var(--ease-apple); }
 .st-chip:hover { background: rgba(255,255,255,0.24); }
 .st-chip:active { transform: scale(0.94); }
+
+/* 关于页的署名 */
+.st-credits { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 0 6px; text-align: center; }
+.st-made { margin: 0; font-size: 13px; letter-spacing: 0.04em; color: rgba(255,255,255,0.55); }
+.st-made strong { font-weight: 700; color: rgba(255,255,255,0.85); }
+.st-tagline { border: 0; background: none; padding: 4px 10px; border-radius: 10px; font: inherit; font-size: 15px; font-weight: 600;
+  color: rgba(255,255,255,0.85); cursor: text; transition: background-color 0.2s ease; animation: text-in 0.5s var(--ease-apple) both; }
+.st-tagline:hover { background: rgba(255,255,255,0.06); }
+.st-tagline.is-empty { font-weight: 400; font-size: 13px; color: rgba(255,255,255,0.4); }
+.st-tagline-input { width: 340px; flex: none; height: 38px; text-align: center; }
