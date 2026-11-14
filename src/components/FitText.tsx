@@ -1,5 +1,8 @@
 import { forwardRef, useLayoutEffect, useRef, type HTMLAttributes, type ReactNode } from "react";
 
+/** 字号设置变化时广播这个事件，所有 FitText 重新量一次 */
+export const REFIT_EVENT = "ingfy:refit-text";
+
 interface Props extends HTMLAttributes<HTMLParagraphElement> {
   /** 内容变化的标识（一般是这行歌词文本），变了才重新测量 */
   fitKey: string;
@@ -52,7 +55,12 @@ export const FitText = forwardRef<HTMLParagraphElement, Props>(function FitText(
       }
     });
     ro.observe(el.parentElement ?? el);
-    return () => ro.disconnect();
+    // 设置里调了字号：可用宽度没变，但基准字号变了，也要重新算
+    window.addEventListener(REFIT_EVENT, fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener(REFIT_EVENT, fit);
+    };
   }, [fitKey, minScale, wrap]);
 
   return (

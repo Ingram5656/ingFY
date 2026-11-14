@@ -1,3 +1,4 @@
+import { REFIT_EVENT } from "../components/FitText";
 import { useEffect, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import type { LightStyle } from "../components/Lights";
@@ -177,8 +178,13 @@ export function useApplySettings(s: Settings) {
     root.style.setProperty("--bg-blur", `${(s.bgBlur / 100) * 60}px`);
     root.style.setProperty("--bg-dim", String((s.bgDim / 100) * 0.75));
     root.classList.toggle("calm", !s.beat);
-    root.style.setProperty("--lyric-size", String(lyricScale(s.lyricSize)));
-    root.style.setProperty("--desk-size", String(deskScale(s.desktopLyricSize)));
+    const lyricSize = String(lyricScale(s.lyricSize));
+    const deskSize = String(deskScale(s.desktopLyricSize));
+    const sizeChanged = root.style.getPropertyValue("--lyric-size") !== lyricSize || root.style.getPropertyValue("--desk-size") !== deskSize;
+    root.style.setProperty("--lyric-size", lyricSize);
+    root.style.setProperty("--desk-size", deskSize);
+    // 字号变了：自适应宽度的歌词行要重新量（它们只在宽度变化时自动重算）
+    if (sizeChanged) window.dispatchEvent(new Event(REFIT_EVENT));
   }, [s]);
 }
 
