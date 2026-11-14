@@ -1,0 +1,87 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { NowPlaying } from "./types";
+import { trackKey } from "./types";
+
+export interface AccountStatus {
+  loggedIn: boolean;
+  displayName: string;
+  /** 已登录但缺少新版收藏接口需要的权限，要重新连接 */
+  needsReauth: boolean;
+}
+
+/**
+ * Spotify 账号和当前歌曲的收藏状态。
+ * liked 为 null 表示不知道：没登录、正在查询、或者当前不是在 Spotify 放歌。
+ */
+export function useSpotify(now: NowPlaying | null) {
+  const [account, setAccount] = useState<AccountStatus>({ loggedIn: false, displayName: "", needsReauth: false });
+  const [liked, setLiked] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ text: string; kind: "ok" | "error" } | null>(null);
+  const key = now?.title ? trackKey(now) : "";
+
+  useEffect(() => {
+    const un: Promise<UnlistenFn>[] = [];
+    invoke<AccountStatus>("spotify_status").then(setAccount).catch(() => {});
+    un.push(listen<AccountStatus>("spotify-account", (e) => setAccount(e.payload)));
+    un.push(listen<boolean>("liked-changed", (e) => setLiked(e.payload)));
+    return () => un.forEach((p) => p.then((u) => u()));
+  }, []);
+
+  // 换歌后查一下是否已收藏。稍等一会儿，让 Spotify 那边的"正在播放"先更新到新歌。
+  useEffect(() => {
+    setLiked(null);
+    if (!account.loggedIn || !key) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      invoke<boolean | null>("spotify_liked")
+        .then((r) => alive && setLiked(r))
+        .catch(() => alive && setLiked(null));
+    }, 900);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [key, account.loggedIn]);
+
+  // 提示条 3 秒后消失
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => setMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [message]);
+
+  const toggleLike = async () => {
+    if (liked === null) return;
+    const next = !liked;
+    setLiked(next);
+    try {
+      await invoke("spotify_set_liked", { liked: next });
+      setMessage({ text: next ? "已添加到 Spotify 的“已点赞的歌曲”" : "已从“已点赞的歌曲”中移除", kind: "ok" });
+    } catch (e) {
+      setLiked(!next);
+      setMessage({ text: String(e), kind: "error" });
+    }
+  };
+
+  const login = async () => {
+    setBusy(true);
+    try {
+      setAccount(await invoke<AccountStatus>("spotify_login"));
+      setMessage({ text: "已连接 Spotify", kind: "ok" });
+    } catch (e) {
+      setMessage({ text: String(e), kind: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const logout = async () => {
+    setAccount(await invoke<AccountStatus>("spotify_logout"));
+    setLiked(null);
+  };
+
+  return { account, liked, busy, message, toggleLike, login, logout };
+}
