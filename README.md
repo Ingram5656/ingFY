@@ -4,6 +4,12 @@ Windows 上的动态歌词软件，液态玻璃风格。读取电脑上正在播
 
 用 Tauri 2（Rust）+ React 写成。
 
+![全屏歌词：逐字卡拉 OK、翻译、灯管拾音灯](docs/screenshots/lyrics.jpg)
+
+| 唱片模式 | 专辑唱片架 | 展开专辑曲目 |
+| --- | --- | --- |
+| ![唱片模式](docs/screenshots/vinyl.jpg) | ![专辑唱片架](docs/screenshots/albums.jpg) | ![展开专辑曲目](docs/screenshots/tracks.jpg) |
+
 ---
 
 ## 目录
@@ -18,6 +24,7 @@ Windows 上的动态歌词软件，液态玻璃风格。读取电脑上正在播
 - [打包与发布新版本](#打包与发布新版本)
 - [项目结构](#项目结构)
 - [致谢](#致谢)
+- [许可证](#许可证)
 
 ---
 
@@ -241,4 +248,10 @@ CHANGELOG.md               版本日志
 - [Spotify Web API](https://developer.spotify.com/documentation/web-api)
 - [cpal](https://github.com/RustAudio/cpal)、[rustfft](https://github.com/ejmahler/RustFFT) — 声音采集和频谱分析
 
-歌词版权归原作者所有，ingfy 只在本地显示，不存储、不分发歌词内容。
+歌词版权归原作者所有，ingfy 只在本地显示，不存储、不分发歌词内容。截图中的专辑封面版权归各自权利人所有。
+
+---
+
+## 许可证
+
+[MIT](LICENSE) © 2026 Ingram5656
