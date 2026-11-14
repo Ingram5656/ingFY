@@ -177,7 +177,14 @@ export function VinylView(p: Props) {
     if (key === cur.key) return;
     const next = { key, randomLook: randomLook(), randomSeed: Math.floor(Math.random() * 1e6) };
     if (!cur.key || !key || !lastSnap.current) {
+      // 不播换片动画的情况（刚启动、两首歌之间短暂没有歌名）：把状态收拾干净，
+      // 免得上一次被打断的换片停在半路，唱片和唱针一直不能拖
       setCur(next);
+      setPhase("idle");
+      setOutgoing(null);
+      setFastArm(false);
+      flung.current = false;
+      setDiscDrag(null);
       return;
     }
     setDir(takeDirection());

@@ -227,7 +227,7 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* 歌词标签：盖在唱片中间，不跟着转 */
 .vinyl-lyric { position: absolute; left: 442px; top: 352px; width: 236px; height: 236px; box-sizing: border-box; padding: 34px;
   border-radius: 50%; background: radial-gradient(circle, #FFF8EE 0%, #F1E6D6 100%); box-shadow: 0 0 0 6px rgba(0,0,0,0.75);
-  display: grid; place-items: center; text-align: center; color: #2A1E4A; transition: opacity 0.4s ease; }
+  display: grid; place-items: center; text-align: center; color: #2A1E4A; transition: opacity 0.4s ease; pointer-events: none; }
 .vinyl-lyric span { font-size: 19px; font-weight: 900; line-height: 1.35; }
 .vinyl-lyric.is-hidden { opacity: 0; }
 
@@ -485,7 +485,9 @@ html.calm .light, html.calm .dl-glow span { animation-name: breathe !important; 
 
 /* 歌词 ⇄ 唱片：两层叠在一起，旧的稍微缩小淡出，新的从略大处落位淡入 */
 .mode-layer { position: absolute; inset: 0; pointer-events: none; }
-.mode-layer > :not(.light-layer) { pointer-events: auto; }
+/* 用 :where 把优先级降到 0：子元素自己写的 pointer-events: none（比如唱片高光）要能生效，
+   否则高光层会挡住下面的唱片，拖不动 */
+:where(.mode-layer) > :where(:not(.light-layer)) { pointer-events: auto; }
 .mode-layer.is-entering { animation: mode-in 0.32s var(--ease-apple) both; }
 .mode-layer.is-leaving { animation: mode-out 0.22s ease-in both; }
 .mode-layer.is-leaving * { pointer-events: none !important; }
