@@ -160,6 +160,50 @@ pub fn delete_tokens(path: &PathBuf) {
     let _ = std::fs::remove_file(path);
 }
 
+// ---------- 限流 ----------
+
+/// Spotify 返回 429（请求太多）时，它会在 Retry-After 里说要等多久。
+/// 在这之前所有接口请求都直接在本地拒绝，不再发出去：继续发只会让 Spotify 把等待时间拉得更长。
+static BLOCKED_UNTIL: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+fn wait_message(secs: u64) -> String {
+    if secs < 60 {
+        format!("Spotify 暂时限制了请求，{} 秒后再试", secs.max(1))
+    } else if secs < 3600 {
+        format!("Spotify 暂时限制了请求，大约 {} 分钟后再试", (secs + 59) / 60)
+    } else {
+        format!("Spotify 暂时限制了请求，大约 {} 小时后再试", (secs + 3599) / 3600)
+    }
+}
+
+/// 还在等待期内就返回要等多少秒
+pub fn blocked_for() -> Option<u64> {
+    let until = (*BLOCKED_UNTIL.lock().unwrap())?;
+    let left = until.saturating_duration_since(std::time::Instant::now()).as_secs();
+    (left > 0).then_some(left)
+}
+
+/// 发请求：等待期内直接拒绝；遇到 429 记下要等多久，并返回"还要等多久"的提示
+async fn send(req: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
+    if let Some(left) = blocked_for() {
+        return Err(wait_message(left));
+    }
+    let resp = req.send().await.map_err(|_| "连不上 Spotify，检查一下网络".to_string())?;
+    if resp.status().as_u16() == 429 {
+        let secs = resp
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .unwrap_or(30)
+            .max(1);
+        *BLOCKED_UNTIL.lock().unwrap() = Some(std::time::Instant::now() + Duration::from_secs(secs));
+        eprintln!("[spotify] 429，Retry-After {secs} 秒");
+        return Err(wait_message(secs));
+    }
+    Ok(resp)
+}
+
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent("ingfy/1.0")
@@ -373,12 +417,7 @@ pub async fn current_track_uri(access: &str) -> Result<Option<String>, String> {
     struct Playing {
         item: Option<Item>,
     }
-    let resp = client()?
-        .get("https://api.spotify.com/v1/me/player/currently-playing")
-        .bearer_auth(access)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let resp = send(client()?.get("https://api.spotify.com/v1/me/player/currently-playing").bearer_auth(access)).await?;
     if resp.status() == reqwest::StatusCode::NO_CONTENT {
         return Ok(None);
     }
@@ -395,13 +434,8 @@ pub async fn current_track_uri(access: &str) -> Result<Option<String>, String> {
 }
 
 pub async fn is_saved(access: &str, uri: &str) -> Result<bool, String> {
-    let list: Vec<bool> = client()?
-        .get("https://api.spotify.com/v1/me/library/contains")
-        .query(&[("uris", uri)])
-        .bearer_auth(access)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
+    let list: Vec<bool> = send(client()?.get("https://api.spotify.com/v1/me/library/contains").query(&[("uris", uri)]).bearer_auth(access))
+        .await?
         .error_for_status()
         .map_err(|e| e.to_string())?
         .json()
@@ -419,13 +453,7 @@ pub async fn set_saved(access: &str, uri: &str, saved: bool) -> Result<(), Strin
     };
     // 没有请求体的 PUT，Spotify 的服务器要求必须带 "Content-Length: 0"，否则返回 411。
     // 空 body 时 HTTP 库不会自动加这个头，所以手动写上。
-    let resp = req
-        .query(&[("uris", uri)])
-        .bearer_auth(access)
-        .header(reqwest::header::CONTENT_LENGTH, "0")
-        .send()
-        .await
-        .map_err(|_| "连不上 Spotify，检查一下网络".to_string())?;
+    let resp = send(req.query(&[("uris", uri)]).bearer_auth(access).header(reqwest::header::CONTENT_LENGTH, "0")).await?;
     let status = resp.status();
     if status.is_success() {
         return Ok(());
@@ -512,13 +540,7 @@ fn api_error(status: u16, what: &str) -> String {
 }
 
 async fn get_json(url: &str, query: &[(&str, String)], access: &str, what: &str) -> Result<serde_json::Value, String> {
-    let resp = client()?
-        .get(url)
-        .query(query)
-        .bearer_auth(access)
-        .send()
-        .await
-        .map_err(|_| "连不上 Spotify，检查一下网络".to_string())?;
+    let resp = send(client()?.get(url).query(query).bearer_auth(access)).await?;
     let status = resp.status();
     if !status.is_success() {
         return Err(api_error(status.as_u16(), what));
@@ -635,7 +657,7 @@ async fn play_body(access: &str, body: serde_json::Value) -> Result<(), String> 
             if let Some(id) = device {
                 req = req.query(&[("device_id", id)]);
             }
-            let resp = req.send().await.map_err(|_| "连不上 Spotify，检查一下网络".to_string())?;
+            let resp = send(req).await?;
             Ok::<u16, String>(resp.status().as_u16())
         }
     };
@@ -737,12 +759,7 @@ fn split_uri(uri: &str) -> Option<(&str, &str)> {
 /// 正在播放的歌所在的专辑 / 歌单，以及里面所有的歌（专辑最多 200 首，歌单最多 500 首）。
 /// 没在 Spotify 播放时返回 None。
 pub async fn now_list(access: &str) -> Result<Option<NowList>, String> {
-    let resp = client()?
-        .get("https://api.spotify.com/v1/me/player")
-        .bearer_auth(access)
-        .send()
-        .await
-        .map_err(|_| "连不上 Spotify，检查一下网络".to_string())?;
+    let resp = send(client()?.get("https://api.spotify.com/v1/me/player").bearer_auth(access)).await?;
     if resp.status() == reqwest::StatusCode::NO_CONTENT {
         return Ok(None);
     }

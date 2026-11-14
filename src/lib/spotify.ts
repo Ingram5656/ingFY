@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { NowPlaying } from "./types";
 import { trackKey } from "./types";
 import { t, tMsg } from "./i18n";
@@ -49,13 +50,18 @@ export function useSpotify(now: NowPlaying | null) {
   }, []);
 
   // 换歌后查一下是否已收藏。稍等一会儿，让 Spotify 那边的"正在播放"先更新到新歌。
+  // 只由主窗口去查，查到后广播给桌面歌词，免得每个窗口各查一遍、把 Spotify 的请求额度用光
   useEffect(() => {
     setLiked(null);
-    if (!account.loggedIn || !key) return;
+    if (!account.loggedIn || !key || getCurrentWindow().label !== "main") return;
     let alive = true;
     const t = setTimeout(() => {
       invoke<boolean | null>("spotify_liked")
-        .then((r) => alive && setLiked(r))
+        .then((r) => {
+          if (!alive) return;
+          setLiked(r);
+          void emit("liked-changed", r);
+        })
         .catch(() => alive && setLiked(null));
     }, 900);
     return () => {

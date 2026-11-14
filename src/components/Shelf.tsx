@@ -41,6 +41,9 @@ interface Props {
 
 /** 曲库内容按类型缓存，切页面再回来不用重新拉 */
 const libraryCache = new Map<ShelfKind, ShelfItem[]>();
+/** 曲库多久内不重新拉：切来切去不会每次都请求 Spotify（曲库要翻好几页，很费请求额度） */
+const LIBRARY_FRESH_MS = 5 * 60 * 1000;
+const libraryLoadedAt = new Map<ShelfKind, number>();
 
 const SPACING = 116; // 相邻两张在架子上的间距（设计稿像素）
 const PICKED_X = -250; // 抽出来的唱片挪到的位置
@@ -59,16 +62,22 @@ export function LibraryView(p: Props) {
   const [toast, setToast] = useState<{ text: string; kind: "ok" | "error" } | null>(null);
 
   // ---- 拉曲库 ----
-  const load = useCallback(() => {
-    if (!p.loggedIn) return;
-    setError(null);
-    invoke<ShelfItem[]>("spotify_library", { kind: p.kind })
-      .then((list) => {
-        libraryCache.set(p.kind, list);
-        setItems(list);
-      })
-      .catch((e) => setError(tMsg(String(e))));
-  }, [p.kind, p.loggedIn]);
+  const load = useCallback(
+    (force = false) => {
+      if (!p.loggedIn) return;
+      const at = libraryLoadedAt.get(p.kind);
+      if (!force && at && Date.now() - at < LIBRARY_FRESH_MS && libraryCache.has(p.kind)) return;
+      setError(null);
+      invoke<ShelfItem[]>("spotify_library", { kind: p.kind })
+        .then((list) => {
+          libraryCache.set(p.kind, list);
+          libraryLoadedAt.set(p.kind, Date.now());
+          setItems(list);
+        })
+        .catch((e) => setError(tMsg(String(e))));
+    },
+    [p.kind, p.loggedIn],
+  );
 
   useEffect(() => {
     setItems(libraryCache.get(p.kind) ?? null);
@@ -163,7 +172,7 @@ export function LibraryView(p: Props) {
   } else if (p.needsReauth) {
     empty = { text: t("曲库需要新的 Spotify 权限，重新连接一次就好"), action: { label: t("重新连接"), run: p.onLogin } };
   } else if (error && !items) {
-    empty = { text: error, action: { label: t("重试"), run: load } };
+    empty = { text: error, action: { label: t("重试"), run: () => load(true) } };
   } else if (!items) {
     empty = { text: t(p.kind === "playlist" ? "正在读取你的歌单…" : "正在读取你的专辑…") };
   } else if (q && scope === "spotify" && searching && !remote) {

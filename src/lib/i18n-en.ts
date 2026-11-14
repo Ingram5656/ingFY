@@ -411,4 +411,8 @@ export const EN: Record<string, string> = {
   "很高": "Very high",
   "拾音灯预览": "Light preview",
   "跟着节拍闪烁已关闭": "Beat sync is off",
+  // Spotify 限流
+  "Spotify 暂时限制了请求，{n} 秒后再试": "Spotify is limiting requests. Try again in {n} s",
+  "Spotify 暂时限制了请求，大约 {n} 分钟后再试": "Spotify is limiting requests. Try again in about {n} min",
+  "Spotify 暂时限制了请求，大约 {n} 小时后再试": "Spotify is limiting requests. Try again in about {n} h",
 };
