@@ -7,7 +7,8 @@ import type { LightStyle } from "./Lights";
 import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
 import { COLOR_PRESETS, pickGradient } from "../lib/palette";
-import { deskScale, lightPalette, lyricScale } from "../lib/settings";
+import { deskScale, islandScale, lightPalette, lyricScale } from "../lib/settings";
+import { VinylEditor } from "./Vinyl";
 import { t, tMsg, useLang } from "../lib/i18n";
 
 interface Props {
@@ -582,6 +583,7 @@ export function SettingsPanel(p: Props) {
         <ClientSection />
       </>
     ),
+    island: <IslandSection settings={s} update={update} palette={p.palette} lightPal={lightPal} artworkUrl={p.artworkUrl} />,
     general: <GeneralSection initial={p.updateInfo} settings={s} update={update} />,
   };
 
@@ -623,6 +625,156 @@ export function SettingsPanel(p: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ 灵动岛
+
+function IslandSection({
+  settings: s,
+  update,
+  palette,
+  lightPal,
+  artworkUrl,
+}: {
+  settings: Settings;
+  update: (patch: Partial<Settings>) => void;
+  palette: string[];
+  lightPal: string[];
+  artworkUrl: string | null;
+}) {
+  const v = s.islandVinyl;
+  const discColors: [string, string] = v.colorMode === "custom" ? [v.a, v.b] : [palette[1] ?? "#FF6F91", palette[palette.length - 1] ?? "#6F48C6"];
+  const customColor = s.islandLyricColorMode === "custom";
+  return (
+    <>
+      <Group foot={t("灵动岛默认贴在屏幕顶部正中。托盘菜单里也可以显示或隐藏。")}>
+        <Toggle label={t("显示灵动岛")} sub={t("在屏幕顶部显示正在唱的歌词")} on={s.islandOn} onChange={(on) => update({ islandOn: on })} />
+      </Group>
+
+      <Group
+        title={t("模式")}
+        foot={
+          s.islandLocked
+            ? t("锁定：鼠标可以穿过灵动岛点到下面的东西，移上去时它会自动隐身。")
+            : t("不锁定：单击展开，出现进度条和播放按钮；按住可以拖到别处。贴着屏幕顶边是刘海形状，离开顶边变成圆角胶囊。")
+        }
+      >
+        <div className="st-cell">
+          <div className="st-seg" role="radiogroup" aria-label={t("模式")}>
+            {(
+              [
+                [false, t("不锁定")],
+                [true, t("锁定")],
+              ] as const
+            ).map(([id, name]) => (
+              <button key={String(id)} role="radio" aria-checked={s.islandLocked === id} onClick={() => update({ islandLocked: id })}>
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Group>
+
+      <Group title={t("大小")}>
+        <div className="st-cell">
+          <Slider label={t("灵动岛大小")} value={s.islandSize} display={`${Math.round(islandScale(s.islandSize) * 100)}%`} onChange={(n) => update({ islandSize: n })} />
+        </div>
+      </Group>
+
+      <Group title={t("左边显示")}>
+        <div className="st-cell">
+          <div className="st-seg" role="radiogroup" aria-label={t("左边显示")}>
+            {(
+              [
+                ["album", t("专辑封面")],
+                ["vinyl", t("唱片")],
+              ] as const
+            ).map(([id, name]) => (
+              <button key={id} role="radio" aria-checked={s.islandLeft === id} onClick={() => update({ islandLeft: id })}>
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+        {s.islandLeft === "vinyl" && (
+          <div className="st-cell st-vinyl-editor">
+            <VinylEditor
+              value={v}
+              onChange={(patch) => update({ islandVinyl: { ...v, ...patch } })}
+              colors={discColors}
+              artUrl={artworkUrl}
+              lyricLabel={false}
+            />
+          </div>
+        )}
+      </Group>
+
+      <Group title={t("背景拾音灯")} foot={t("灯光的亮度、颜色和跟着节拍闪烁，和全屏的拾音灯设置一样。")}>
+        <Toggle label={t("拾音灯")} sub={t("关掉后背景是纯黑")} on={s.islandLightsOn} onChange={(on) => update({ islandLightsOn: on })} />
+        <div className={`st-cell${s.islandLightsOn ? "" : " is-disabled"}`}>
+          <div className="st-fx" role="radiogroup" aria-label={t("灯效样式")}>
+            {LIGHT_STYLES.map((l) => (
+              <button
+                key={l.id}
+                className="st-tile"
+                role="radio"
+                aria-checked={s.islandLightStyle === l.id}
+                disabled={!s.islandLightsOn}
+                onClick={() => update({ islandLightStyle: l.id })}
+              >
+                <span className="st-thumb st-thumb--fx">
+                  <LightThumb id={l.id} palette={lightPal} />
+                </span>
+                <span>{t(l.label)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Group>
+
+      <Group title={t("字幕颜色")} foot={t("歌词在灵动岛上一直显示，不能关闭。")}>
+        <button className="st-cell st-choice" role="radio" aria-checked={!customColor} onClick={() => update({ islandLyricColorMode: "album" })}>
+          <span className="st-dot" style={{ background: `linear-gradient(135deg, ${palette[0]}, ${palette[palette.length - 1]})` }} />
+          <span className="st-option-text">
+            <span>{t("跟随专辑")}</span>
+            <small>{t("换歌时自动换色")}</small>
+          </span>
+          {!customColor && <CheckIcon />}
+        </button>
+        <div className="st-cell">
+          <span className="st-cell-label">{t("固定颜色")}</span>
+          <div className="st-swatches" role="radiogroup" aria-label={t("固定颜色")}>
+            {LYRIC_PRESETS.map((c) => (
+              <button
+                key={c.c}
+                className="st-swatch"
+                role="radio"
+                aria-checked={customColor && s.islandLyricColor.toUpperCase() === c.c}
+                aria-label={t(c.name)}
+                style={{ background: c.c }}
+                onClick={() => update({ islandLyricColorMode: "custom", islandLyricColor: c.c })}
+              />
+            ))}
+            <label className="st-swatch st-swatch--pick" aria-label={t("更多颜色")}>
+              <input
+                type="color"
+                value={s.islandLyricColor}
+                onChange={(e) => update({ islandLyricColorMode: "custom", islandLyricColor: e.target.value.toUpperCase() })}
+              />
+              <span
+                style={{
+                  background:
+                    customColor && !LYRIC_PRESETS.some((c) => c.c === s.islandLyricColor.toUpperCase())
+                      ? s.islandLyricColor
+                      : "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)",
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      </Group>
+    </>
   );
 }
 
@@ -768,7 +920,7 @@ function Toggle({ label, sub, on, onChange, disabled }: { label: string; sub?: s
   );
 }
 
-type PageId = "look" | "lyrics" | "lights" | "spotify" | "general";
+type PageId = "look" | "lyrics" | "lights" | "island" | "spotify" | "general";
 
 const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
   {
@@ -799,6 +951,17 @@ const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round">
         <path d="M6 15v3M10 9v9M14 5v13M18 11v7" />
+      </svg>
+    ),
+  },
+  {
+    id: "island",
+    label: "灵动岛",
+    color: "linear-gradient(135deg, #3A3A3C, #000000)",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3" y="8" width="18" height="8" rx="4" fill="#fff" />
+        <circle cx="7.2" cy="12" r="2" fill="#000" />
       </svg>
     ),
   },

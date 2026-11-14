@@ -51,6 +51,30 @@ export interface Settings {
   vinylColorMode: "album" | "custom";
   vinylA: string;
   vinylB: string;
+  /** 灵动岛：开关、锁定（悬停隐身、鼠标穿透）、大小 0~100（50 是默认大小） */
+  islandOn: boolean;
+  islandLocked: boolean;
+  islandSize: number;
+  /** 灵动岛左边：专辑封面 / 唱片 */
+  islandLeft: "album" | "vinyl";
+  /** 灵动岛自己的唱片外观（不带唱针） */
+  islandVinyl: VinylPrefs;
+  /** 灵动岛背景的拾音灯 */
+  islandLightsOn: boolean;
+  islandLightStyle: LightStyle;
+  /** 灵动岛字幕唱到的字的颜色 */
+  islandLyricColorMode: "album" | "custom";
+  islandLyricColor: string;
+}
+
+/** 一张唱片的外观设置：标签、花纹、颜色 */
+export interface VinylPrefs {
+  label: "album" | "lyric" | "solid";
+  labelColor: string;
+  look: VinylLook | "random";
+  colorMode: "album" | "custom";
+  a: string;
+  b: string;
 }
 
 export type VinylLook = "classic" | "color" | "splatter" | "spots" | "split" | "swirl";
@@ -82,6 +106,15 @@ export const DEFAULT_SETTINGS: Settings = {
   vinylColorMode: "album",
   vinylA: "#4BF0B5",
   vinylB: "#2F5BFF",
+  islandOn: false,
+  islandLocked: false,
+  islandSize: 50,
+  islandLeft: "album",
+  islandVinyl: { label: "album", labelColor: "#F4EFE6", look: "classic", colorMode: "album", a: "#4BF0B5", b: "#2F5BFF" },
+  islandLightsOn: true,
+  islandLightStyle: "wave",
+  islandLyricColorMode: "album",
+  islandLyricColor: "#FFFFFF",
 };
 
 const KEY = "nige.settings";
@@ -200,6 +233,8 @@ export function useApplySettings(s: Settings) {
 }
 
 export const lyricScale = (v: number) => 0.7 + (v / 100) * 0.6;
+/** 灵动岛缩放：0.75~1.25 倍 */
+export const islandScale = (v: number) => 0.75 + (v / 100) * 0.5;
 export const deskScale = (v: number) => 0.8 + (v / 100) * 0.4;
 
 /** 拾音灯实际使用的颜色：取自专辑，或者用户定的起止色渐变 */

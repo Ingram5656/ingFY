@@ -9,7 +9,7 @@ use media::{Artwork, NowPlaying, Snapshot};
 use spotify::{AccountStatus, Tokens};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
 #[derive(Default)]
 struct AppState {
@@ -21,6 +21,21 @@ struct AppState {
     client_path: Mutex<PathBuf>,
     /// 登录已过期：续期被 Spotify 拒绝了，需要重新连接
     spotify_expired: Mutex<bool>,
+    island: Mutex<IslandState>,
+}
+
+/// 灵动岛窗口的状态
+#[derive(Default)]
+struct IslandState {
+    visible: bool,
+    /// 锁定：鼠标穿透，鼠标移上去时隐身
+    locked: bool,
+    /// 贴在屏幕顶边
+    docked: bool,
+    /// 锁定时鼠标正停在岛上
+    hover: bool,
+    /// 窗口最后一次移动的时间；停下来、松开鼠标后检查要不要吸附到顶边
+    last_move: Option<std::time::Instant>,
 }
 
 // ---------- 命令（前端用 invoke 调用） ----------
@@ -88,6 +103,41 @@ fn set_desktop_locked(app: AppHandle, state: State<AppState>, locked: bool) -> R
         .map_err(|e| e.to_string())?;
     state.snapshot.lock().unwrap().desktop_locked = locked;
     app.emit("desktop-locked", locked).map_err(|e| e.to_string())
+}
+
+/// 灵动岛显示 / 隐藏、锁定 / 不锁定。返回现在是不是贴在顶边
+#[tauri::command]
+fn island_set(app: AppHandle, state: State<AppState>, visible: bool, locked: bool) -> Result<bool, String> {
+    let win = app.get_webview_window("island").ok_or("找不到灵动岛窗口")?;
+    win.set_ignore_cursor_events(locked).map_err(|e| e.to_string())?;
+    let result = if visible { win.show() } else { win.hide() };
+    result.map_err(|e| e.to_string())?;
+    let mut st = state.island.lock().unwrap();
+    st.visible = visible;
+    st.locked = locked;
+    if !locked {
+        st.hover = false;
+    }
+    Ok(st.docked)
+}
+
+/// 改灵动岛窗口大小（逻辑像素）。保持水平居中位置和顶边不动，展开时往下长
+#[tauri::command]
+fn island_layout(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let win = app.get_webview_window("island").ok_or("找不到灵动岛窗口")?;
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let pos = win.outer_position().map_err(|e| e.to_string())?;
+    let size = win.outer_size().map_err(|e| e.to_string())?;
+    let w = (width * scale).round().max(1.0) as u32;
+    let h = (height * scale).round().max(1.0) as u32;
+    if w == size.width && h == size.height {
+        return Ok(());
+    }
+    if w != size.width {
+        let cx = pos.x + size.width as i32 / 2;
+        win.set_position(PhysicalPosition::new(cx - w as i32 / 2, pos.y)).map_err(|e| e.to_string())?;
+    }
+    win.set_size(PhysicalSize::new(w, h)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -468,13 +518,14 @@ fn tray_menu<R: tauri::Runtime, M: Manager<R>>(m: &M, en: bool) -> tauri::Result
     let tr = |zh: &'static str, e: &'static str| if en { e } else { zh };
     let show = MenuItem::with_id(m, "show", tr("显示主窗口", "Show ingfy"), true, None::<&str>)?;
     let desk = MenuItem::with_id(m, "desktop", tr("显示 / 隐藏桌面歌词", "Show / hide desktop lyrics"), true, None::<&str>)?;
+    let island = MenuItem::with_id(m, "island", tr("显示 / 隐藏灵动岛", "Show / hide Dynamic Island"), true, None::<&str>)?;
     let prev = MenuItem::with_id(m, "prev", tr("上一首", "Previous"), true, None::<&str>)?;
     let toggle = MenuItem::with_id(m, "toggle", tr("播放 / 暂停", "Play / pause"), true, None::<&str>)?;
     let next = MenuItem::with_id(m, "next", tr("下一首", "Next"), true, None::<&str>)?;
     let quit = MenuItem::with_id(m, "quit", tr("退出 ingfy", "Quit ingfy"), true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(m)?;
     let sep2 = PredefinedMenuItem::separator(m)?;
-    Menu::with_items(m, &[&show, &desk, &sep1, &prev, &toggle, &next, &sep2, &quit])
+    Menu::with_items(m, &[&show, &desk, &island, &sep1, &prev, &toggle, &next, &sep2, &quit])
 }
 
 /// 前端切换语言时调用：记下语言，并把托盘菜单换成对应语言
@@ -499,6 +550,10 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
             "desktop" => toggle_desktop(app),
+            // 灵动岛开关存在前端设置里，让灵动岛窗口自己切换并同步给主窗口
+            "island" => {
+                let _ = app.emit("island-toggle", ());
+            }
             "prev" => control_async("previous"),
             "toggle" => control_async("toggle"),
             "next" => control_async("next"),
@@ -618,6 +673,94 @@ fn spawn_media_watcher(app: AppHandle) {
     });
 }
 
+/// 把灵动岛放到主屏幕顶部正中，贴着顶边
+fn place_island_window(app: &AppHandle) {
+    let Some(win) = app.get_webview_window("island") else { return };
+    let (Ok(Some(monitor)), Ok(size)) = (win.primary_monitor(), win.outer_size()) else { return };
+    let m_pos = monitor.position();
+    let x = m_pos.x + (monitor.size().width as i32 - size.width as i32) / 2;
+    let _ = win.set_position(PhysicalPosition::new(x, m_pos.y));
+    app.state::<AppState>().island.lock().unwrap().docked = true;
+}
+
+#[cfg(windows)]
+fn left_button_down() -> bool {
+    // 最高位是 1 表示鼠标左键现在按着
+    unsafe { (windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(0x01) as u16 & 0x8000) != 0 }
+}
+#[cfg(not(windows))]
+fn left_button_down() -> bool {
+    false
+}
+
+/// 鼠标在屏幕上的位置（物理像素）
+#[cfg(windows)]
+fn cursor_position() -> Option<(i32, i32)> {
+    let mut p = windows::Win32::Foundation::POINT::default();
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p) }.ok()?;
+    Some((p.x, p.y))
+}
+#[cfg(not(windows))]
+fn cursor_position() -> Option<(i32, i32)> {
+    None
+}
+
+/// 拖动结束后：离屏幕顶边很近就吸上去（变成刘海形状），并告诉前端现在贴没贴边
+fn settle_island(app: &AppHandle, win: &WebviewWindow) {
+    let (Ok(pos), Ok(Some(monitor))) = (win.outer_position(), win.current_monitor()) else { return };
+    let top = monitor.position().y;
+    let snap = (24.0 * monitor.scale_factor()) as i32;
+    let docked = pos.y - top < snap;
+    if docked && pos.y != top {
+        let _ = win.set_position(PhysicalPosition::new(pos.x, top));
+    }
+    let changed = {
+        let mut st = app.state::<AppState>().island.lock().unwrap();
+        let changed = st.docked != docked;
+        st.docked = docked;
+        changed
+    };
+    if changed {
+        let _ = app.emit("island-dock", docked);
+    }
+}
+
+/// 灵动岛的后台线程：拖完后吸附顶边；锁定时看鼠标在不在岛上，在就让它隐身
+fn spawn_island_watcher(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let Some(win) = app.get_webview_window("island") else { continue };
+        let (visible, locked, last_move) = {
+            let st = app.state::<AppState>().island.lock().unwrap();
+            (st.visible, st.locked, st.last_move)
+        };
+        if !visible {
+            continue;
+        }
+        if let Some(t) = last_move {
+            if t.elapsed() >= std::time::Duration::from_millis(150) && !left_button_down() {
+                app.state::<AppState>().island.lock().unwrap().last_move = None;
+                settle_island(&app, &win);
+            }
+        }
+        if locked {
+            let inside = match (cursor_position(), win.outer_position(), win.outer_size()) {
+                (Some((x, y)), Ok(p), Ok(s)) => x >= p.x && x < p.x + s.width as i32 && y >= p.y && y < p.y + s.height as i32,
+                _ => false,
+            };
+            let changed = {
+                let mut st = app.state::<AppState>().island.lock().unwrap();
+                let changed = st.hover != inside;
+                st.hover = inside;
+                changed
+            };
+            if changed {
+                let _ = app.emit("island-hover", inside);
+            }
+        }
+    });
+}
+
 /// 把桌面歌词窗口放到主屏幕底部居中
 fn place_desktop_window(app: &AppHandle) {
     let Some(win) = app.get_webview_window("desktop") else { return };
@@ -643,6 +786,12 @@ pub fn run() {
         .manage(AppState::default())
         // 点主窗口的关闭按钮：缩到托盘继续运行（桌面歌词和快捷键都还在），从托盘菜单退出
         .on_window_event(|window, event| {
+            // 灵动岛被拖动：记下时间，停下来后再判断要不要吸附顶边
+            if window.label() == "island" {
+                if let tauri::WindowEvent::Moved(_) = event {
+                    window.state::<AppState>().island.lock().unwrap().last_move = Some(std::time::Instant::now());
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
@@ -668,6 +817,8 @@ pub fn run() {
             spotify_context_tracks,
             set_desktop_locked,
             set_desktop_visible,
+            island_set,
+            island_layout,
             lyrics_options,
             lyrics_by_id,
             save_share_image,
@@ -693,6 +844,8 @@ pub fn run() {
                 *state.tokens_path.lock().unwrap() = path;
             }
             place_desktop_window(&handle);
+            place_island_window(&handle);
+            spawn_island_watcher(handle.clone());
             if let Err(e) = setup_tray(app) {
                 eprintln!("[tray] 创建托盘图标失败：{e}");
             }

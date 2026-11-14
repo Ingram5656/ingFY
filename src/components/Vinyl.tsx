@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import type { NowPlaying } from "../lib/types";
 import { trackKey } from "../lib/types";
-import type { Settings, VinylLook } from "../lib/settings";
+import type { Settings, VinylLook, VinylPrefs } from "../lib/settings";
 import {
   ARM_INNER,
   ARM_LEN,
@@ -421,7 +421,16 @@ interface MenuProps {
 }
 
 function VinylMenu({ settings: s, update, colors, artUrl, onClose }: MenuProps) {
-  const thumbLabel = artUrl ? { backgroundImage: `url(${artUrl})` } : { background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})` };
+  const value: VinylPrefs = { label: s.vinylLabel, labelColor: s.vinylLabelColor, look: s.vinylLook, colorMode: s.vinylColorMode, a: s.vinylA, b: s.vinylB };
+  const change = (patch: Partial<VinylPrefs>) =>
+    update({
+      ...(patch.label !== undefined && { vinylLabel: patch.label }),
+      ...(patch.labelColor !== undefined && { vinylLabelColor: patch.labelColor }),
+      ...(patch.look !== undefined && { vinylLook: patch.look }),
+      ...(patch.colorMode !== undefined && { vinylColorMode: patch.colorMode }),
+      ...(patch.a !== undefined && { vinylA: patch.a }),
+      ...(patch.b !== undefined && { vinylB: patch.b }),
+    });
   return (
     <section className="vinyl-menu glass glass--thick" role="dialog" aria-labelledby="vm-title">
       <header>
@@ -432,39 +441,70 @@ function VinylMenu({ settings: s, update, colors, artUrl, onClose }: MenuProps) 
           </svg>
         </button>
       </header>
+      <VinylEditor value={value} onChange={change} colors={colors} artUrl={artUrl} />
+    </section>
+  );
+}
 
+/**
+ * 唱片外观编辑：标签、花纹、颜色。全屏唱片模式的菜单和灵动岛设置共用。
+ * lyricLabel 为 false 时不提供"歌词"标签（灵动岛的唱片太小，放不下字）。
+ */
+export function VinylEditor({
+  value: v,
+  onChange,
+  colors,
+  artUrl,
+  lyricLabel = true,
+}: {
+  value: VinylPrefs;
+  onChange: (patch: Partial<VinylPrefs>) => void;
+  colors: [string, string];
+  artUrl: string | null;
+  lyricLabel?: boolean;
+}) {
+  const thumbLabel = artUrl ? { backgroundImage: `url(${artUrl})` } : { background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})` };
+  const labels = (
+    [
+      ["album", t("专辑封面")],
+      ["lyric", t("歌词")],
+      ["solid", t("纯色")],
+    ] as const
+  ).filter(([id]) => lyricLabel || id !== "lyric");
+  return (
+    <>
       <div className="vm-block">
         <h3>{t("中间的标签")}</h3>
         <div className="st-seg" role="radiogroup" aria-label={t("标签内容")}>
-          {(
-            [
-              ["album", t("专辑封面")],
-              ["lyric", t("歌词")],
-              ["solid", t("纯色")],
-            ] as const
-          ).map(([id, name]) => (
-            <button key={id} role="radio" aria-checked={s.vinylLabel === id} onClick={() => update({ vinylLabel: id })}>
+          {labels.map(([id, name]) => (
+            <button key={id} role="radio" aria-checked={v.label === id} onClick={() => onChange({ label: id })}>
               {name}
             </button>
           ))}
         </div>
-        {s.vinylLabel === "solid" && (
+        {v.label === "solid" && (
           <div className="vm-swatches" role="radiogroup" aria-label={t("标签颜色")}>
             {LABEL_COLORS.map((c) => (
               <button
                 key={c.c}
                 className="st-swatch"
                 role="radio"
-                aria-checked={s.vinylLabelColor === c.c}
+                aria-checked={v.labelColor === c.c}
                 aria-label={t(c.name)}
                 style={{ background: c.c }}
-                onClick={() => update({ vinylLabelColor: c.c })}
+                onClick={() => onChange({ labelColor: c.c })}
               />
             ))}
           </div>
         )}
         <p className="st-note">
-          {s.vinylLabel === "lyric" ? t("歌词标签不跟着转，方便边听边看") : s.vinylLabel === "solid" ? t("纯色标签上印歌名和歌手") : t("标签用当前歌曲的专辑封面")}
+          {v.label === "lyric"
+            ? t("歌词标签不跟着转，方便边听边看")
+            : v.label === "solid"
+              ? lyricLabel
+                ? t("纯色标签上印歌名和歌手")
+                : t("标签用一种纯色")
+              : t("标签用当前歌曲的专辑封面")}
         </p>
       </div>
 
@@ -472,7 +512,7 @@ function VinylMenu({ settings: s, update, colors, artUrl, onClose }: MenuProps) 
         <h3>{t("唱片外观")}</h3>
         <div className="vm-looks" role="radiogroup" aria-label={t("唱片外观")}>
           {VINYL_LOOKS.map((l) => (
-            <button key={l.id} className="vm-look" role="radio" aria-checked={s.vinylLook === l.id} onClick={() => update({ vinylLook: l.id })}>
+            <button key={l.id} className="vm-look" role="radio" aria-checked={v.look === l.id} onClick={() => onChange({ look: l.id })}>
               <span className="vm-thumb">
                 <Disc
                   look={l.id === "random" ? "swirl" : l.id}
@@ -488,7 +528,7 @@ function VinylMenu({ settings: s, update, colors, artUrl, onClose }: MenuProps) 
             </button>
           ))}
         </div>
-        <p className="st-note">{s.vinylLook === "random" ? t("每次切歌随机换一种外观，斑点位置也每次不同") : t("斑点位置每首歌都不一样")}</p>
+        <p className="st-note">{v.look === "random" ? t("每次切歌随机换一种外观，斑点位置也每次不同") : t("斑点位置每首歌都不一样")}</p>
       </div>
 
       <div className="vm-block">
@@ -500,18 +540,18 @@ function VinylMenu({ settings: s, update, colors, artUrl, onClose }: MenuProps) 
               ["custom", t("自定义")],
             ] as const
           ).map(([id, name]) => (
-            <button key={id} role="radio" aria-checked={s.vinylColorMode === id} onClick={() => update({ vinylColorMode: id })}>
+            <button key={id} role="radio" aria-checked={v.colorMode === id} onClick={() => onChange({ colorMode: id })}>
               {name}
             </button>
           ))}
         </div>
-        {s.vinylColorMode === "custom" && (
+        {v.colorMode === "custom" && (
           <>
             <div className="vm-pairs" role="radiogroup" aria-label={t("配色主题")}>
               {VINYL_PRESETS.map((c) => {
-                const on = s.vinylA === c.a && s.vinylB === c.b;
+                const on = v.a === c.a && v.b === c.b;
                 return (
-                  <button key={c.id} className="vm-pair" role="radio" aria-checked={on} onClick={() => update({ vinylA: c.a, vinylB: c.b })}>
+                  <button key={c.id} className="vm-pair" role="radio" aria-checked={on} onClick={() => onChange({ a: c.a, b: c.b })}>
                     <span style={{ background: `conic-gradient(${c.a} 0deg 180deg, ${c.b} 180deg 360deg)` }} />
                     {t(c.name)}
                   </button>
@@ -520,18 +560,18 @@ function VinylMenu({ settings: s, update, colors, artUrl, onClose }: MenuProps) 
             </div>
             <div className="st-pickers">
               <label className="st-pick">
-                <input type="color" value={s.vinylA} onChange={(e) => update({ vinylA: e.target.value.toUpperCase() })} />
+                <input type="color" value={v.a} onChange={(e) => onChange({ a: e.target.value.toUpperCase() })} />
                 {t("主色")}
               </label>
               <label className="st-pick">
-                <input type="color" value={s.vinylB} onChange={(e) => update({ vinylB: e.target.value.toUpperCase() })} />
+                <input type="color" value={v.b} onChange={(e) => onChange({ b: e.target.value.toUpperCase() })} />
                 {t("副色")}
               </label>
             </div>
           </>
         )}
-        <p className="st-note">{s.vinylColorMode === "album" ? t("唱片颜色跟着专辑封面变，换歌自动换色") : t("所有唱片都用这两种颜色，墨水飞溅里还会加一点墨黑")}</p>
+        <p className="st-note">{v.colorMode === "album" ? t("唱片颜色跟着专辑封面变，换歌自动换色") : t("所有唱片都用这两种颜色，墨水飞溅里还会加一点墨黑")}</p>
       </div>
-    </section>
+    </>
   );
 }

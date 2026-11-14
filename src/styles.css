@@ -947,3 +947,89 @@ span.nl-cover { position: relative; overflow: hidden; display: block; }
   to { opacity: 1; transform: none; filter: none; }
 }
 @media (prefers-reduced-motion: reduce) { .seg button.seg-extra { animation: none; } }
+
+/* ===== 灵动岛 =====
+   所有尺寸都乘以 --u（= 设置里的大小倍数 × 1px）。窗口比岛左右各宽 14px、下面高 18px，留给阴影。 */
+html[data-window="island"], html[data-window="island"] body { background: transparent; }
+.isl-root { --u: calc(var(--s, 1) * 1px); --isl-ease: cubic-bezier(0.32, 1.28, 0.5, 1);
+  height: 100%; display: flex; justify-content: center; align-items: flex-start; }
+.isl { position: relative; flex: none; width: calc(380 * var(--u)); height: calc(46 * var(--u));
+  border-radius: calc(23 * var(--u)); overflow: hidden; background: #000; color: #fff; cursor: default;
+  box-shadow: 0 calc(6 * var(--u)) calc(14 * var(--u)) rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.09);
+  transition: width 0.42s var(--isl-ease), height 0.42s var(--isl-ease), border-radius 0.42s var(--isl-ease),
+    opacity 0.22s ease, transform 0.3s var(--ease-apple), box-shadow 0.3s ease; }
+/* 贴在屏幕顶边：上面两个角是直的，像从屏幕边缘垂下来的刘海 */
+.is-docked .isl { border-radius: 0 0 calc(23 * var(--u)) calc(23 * var(--u)); box-shadow: 0 calc(6 * var(--u)) calc(14 * var(--u)) rgba(0,0,0,0.35); }
+.is-open .isl { width: calc(420 * var(--u)); height: calc(172 * var(--u)); border-radius: calc(36 * var(--u)); }
+.is-docked.is-open .isl { border-radius: 0 0 calc(36 * var(--u)) calc(36 * var(--u)); }
+.isl-root:not(.is-locked) .isl:active:not(:has(button:active, .seek:active)) { transform: scale(0.985); }
+/* 锁定后鼠标移上去：整个岛隐身，不挡下面的东西 */
+.is-ghost .isl { opacity: 0; transform: scale(0.94); transition: opacity 0.16s ease, transform 0.2s ease; }
+
+/* 背景的拾音灯：比全屏版小一圈、暗一点，让字看得清 */
+.isl-lights { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.isl-lights .lights { opacity: calc(var(--light-alpha, 0.85) * 0.62); }
+.isl-lights::after { content: ""; position: absolute; inset: 0; z-index: 2;
+  background: linear-gradient(90deg, rgba(0,0,0,0.5), rgba(0,0,0,0.08) 45%, rgba(0,0,0,0.15)); }
+.isl-lights .lights--tube { inset: 14% 3%; gap: 3.2%; }
+.isl-lights .lights--tube .light { width: 3.6%; border-width: 0.5px; box-shadow: 0 0 calc(12 * var(--u)) var(--c), inset 1px 0 2px rgba(255,255,255,0.35); }
+.isl-lights .lights--hist { left: 2%; right: 2%; height: 92%; gap: max(1px, calc(1.5 * var(--u))); }
+.isl-lights .lights--hist .light { border-radius: 2px 2px 0 0; box-shadow: 0 0 calc(6 * var(--u)) color-mix(in srgb, var(--c) 60%, transparent);
+  background: repeating-linear-gradient(0deg, var(--c) 0 calc(3.5 * var(--u)), transparent calc(3.5 * var(--u)) calc(5 * var(--u))); }
+.isl-lights .lights--ring { width: calc(170 * var(--u)); top: 50%; left: 62%; }
+.is-open .isl-lights .lights--ring { width: calc(250 * var(--u)); left: 50%; }
+.isl-lights .lights--ring::before { border-width: 1px; }
+.isl-lights .lights--wave { inset: 16% 3%; }
+.isl-lights .lights--wave .light { width: max(2px, calc(3 * var(--u))); box-shadow: 0 0 calc(6 * var(--u)) var(--c); }
+
+/* 收起：左边封面，右边一行歌词 */
+.isl-compact { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; gap: calc(11 * var(--u));
+  padding: 0 calc(20 * var(--u)) 0 calc(6 * var(--u));
+  transition: opacity 0.22s ease, transform 0.42s var(--isl-ease), filter 0.3s ease; }
+.is-open .isl-compact { opacity: 0; transform: scale(0.86); filter: blur(4px); pointer-events: none; }
+/* 展开：封面、歌名、歌词，下面进度条和播放控制 */
+.isl-full { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column;
+  padding: calc(16 * var(--u)) calc(22 * var(--u)) calc(10 * var(--u));
+  opacity: 0; transform: scale(1.08); filter: blur(6px); pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.42s var(--isl-ease), filter 0.25s ease; }
+.is-open .isl-full { opacity: 1; transform: none; filter: none; pointer-events: auto; transition-delay: 0.08s; }
+
+.isl-visual { flex: none; display: flex; filter: drop-shadow(0 calc(2 * var(--u)) calc(6 * var(--u)) rgba(0,0,0,0.5)); }
+.isl-art { display: block; border-radius: calc(10 * var(--u)); background-size: cover; background-position: center;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12); }
+.isl-full .isl-art { border-radius: calc(14 * var(--u)); }
+.isl-text { flex: 1; min-width: 0; }
+.isl-lyric { margin: 0; padding: 0.12em 0 0.06em; font-size: calc(17 * var(--u)); font-weight: 800; line-height: 1.25;
+  white-space: nowrap; overflow-x: clip; overflow-y: visible; text-overflow: ellipsis;
+  --k-sung: var(--isl-sung, #fff); --k-rest: rgba(255,255,255,0.5); --line-on: 1; color: var(--isl-sung, #fff);
+  transform-origin: 0 60%; transform: scale(calc(1 + var(--beat, 0) * 0.07)); transition: transform 70ms linear;
+  filter: drop-shadow(0 1px 4px rgba(0,0,0,0.7)) drop-shadow(0 0 10px color-mix(in srgb, var(--isl-sung, #fff) 35%, transparent)); }
+.isl-lyric .karaoke { --k-lift: -0.08em; }
+
+.isl-head { display: flex; align-items: center; gap: calc(14 * var(--u)); min-height: 0; }
+.isl-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(1 * var(--u)); }
+.isl-meta strong { font-size: calc(15 * var(--u)); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.isl-meta small { font-size: calc(12 * var(--u)); color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.isl-meta .isl-lyric { font-size: calc(16 * var(--u)); margin-top: calc(3 * var(--u)); }
+
+.isl-seek { margin-top: calc(4 * var(--u)); }
+.isl-seek .progress { gap: calc(9 * var(--u)); font-size: calc(11 * var(--u)); color: rgba(255,255,255,0.6); }
+.isl-seek .seek { padding: calc(9 * var(--u)) 0; }
+.isl-seek .track { height: calc(4 * var(--u)); }
+.isl-seek .seek:hover .track, .isl-seek .is-dragging .track { height: calc(6 * var(--u)); }
+.isl-seek .knob { width: calc(11 * var(--u)); height: calc(11 * var(--u)); margin: calc(-5.5 * var(--u)) 0 0 calc(-5.5 * var(--u)); }
+
+.isl-controls { display: flex; justify-content: center; align-items: center; gap: calc(26 * var(--u)); margin-top: auto; }
+.isl-controls .ibtn { width: calc(40 * var(--u)); height: calc(40 * var(--u)); }
+.isl-controls .isl-play { width: calc(46 * var(--u)); height: calc(46 * var(--u)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .isl, .isl-compact, .isl-full { transition-duration: 0.01s !important; }
+}
+
+/* 设置里的灵动岛页：灯效关掉时样式不能选；唱片编辑嵌在分组卡片里 */
+.st-cell.is-disabled { opacity: 0.45; }
+.st-vinyl-editor { display: flex; flex-direction: column; gap: 4px; }
+.st-vinyl-editor .vm-block { padding: 8px 0; }
+.st-vinyl-editor .vm-block + .vm-block { border-top: 1px solid rgba(255,255,255,0.08); }
+.st-vinyl-editor h3 { margin: 0; font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); }

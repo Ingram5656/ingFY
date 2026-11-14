@@ -1,8 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口和桌面歌词窗口的权限",
-  "windows": ["main", "desktop"],
+  "description": "主窗口、桌面歌词和灵动岛窗口的权限",
+  "windows": [
+    "main",
+    "desktop",
+    "island"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
