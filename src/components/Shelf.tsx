@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type WheelEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PlayIcon } from "./Icons";
 
@@ -294,9 +294,23 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
     if (i !== center) goTo(i);
     else setPicked((cur) => (cur === i ? null : i));
   };
-  // 点架子空白处把抽出来的唱片放回去
-  const onBackdrop = () => {
-    if (picked !== null) setPicked(null);
+  // 点击按位置算是哪一张：正中间的唱片只露一条很窄的书脊，浏览器对这种侧着的 3D 面点不中，
+  // 所以不靠元素命中，而是把点击的横坐标换算成架子上的第几张。
+  const shelfRef = useRef<HTMLDivElement>(null);
+  const onShelfClick = (e: MouseEvent<HTMLDivElement>) => {
+    const el = shelfRef.current;
+    if (!el || !n) return;
+    const r = el.getBoundingClientRect();
+    const k = r.width / 1440; // 舞台按 1440 宽等比缩放
+    const x = (e.clientX - (r.left + r.width / 2)) / k;
+    const y = (e.clientY - r.top) / k;
+    if (picked !== null) {
+      // 点抽出来的那张本身不动（播放按钮自己处理），点别处放回去
+      if (Math.abs(x) > 300 || y < 120 || y > 760) setPicked(null);
+      return;
+    }
+    if (y < 120 || y > 760) return;
+    onPick(Math.max(0, Math.min(n - 1, Math.round(pos + x / SPACING))));
   };
 
   const from = Math.max(0, Math.floor(pos) - RENDER_RANGE);
@@ -313,7 +327,8 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
       role="listbox"
       aria-label="唱片架，滚轮左右翻"
       aria-activedescendant={n ? `rec-${center}` : undefined}
-      onClick={onBackdrop}
+      ref={shelfRef}
+      onClick={onShelfClick}
     >
       <div className="shelf-row">
         {visible.map((i) => (
@@ -324,7 +339,6 @@ function Shelf({ items, onPlay }: { items: ShelfItem[]; onPlay: (it: ShelfItem) 
             d={i - pos}
             picked={picked === i}
             pickedSide={picked === null ? 0 : Math.sign(i - picked)}
-            onPick={() => onPick(i)}
             onPlay={() => onPlay(items[i])}
           />
         ))}
@@ -341,16 +355,16 @@ interface RecordProps {
   picked: boolean;
   /** 有一张被抽出来时，其他唱片往两边让：-1 左边让，1 右边让 */
   pickedSide: number;
-  onPick: () => void;
   onPlay: () => void;
 }
 
-const Record = memo(function Record({ id, item, d, picked, pickedSide, onPick, onPlay }: RecordProps) {
+const Record = memo(function Record({ id, item, d, picked, pickedSide, onPlay }: RecordProps) {
   const spine = useSpineColor(item.image);
   const ad = Math.abs(d);
-  // 竖着插在架子上：越靠中间越接近侧面朝前（只看到书脊），越往两边露出的封面越多
-  const turn = 90 - Math.min(ad, 4) * 6;
-  const rot = d <= 0 ? turn : -turn;
+  // 竖着插在架子上：正中间侧面朝前（只看到书脊），往两边逐渐转开、露出封面。
+  // 角度随位置连续变化（左边 66°~90°，右边 90°~114°），翻动时只是轻轻偏一点，
+  // 不会在经过中间时整张翻面，也就不会和旁边的唱片穿插。右半边看到的是封套背面，背面也印着封面。
+  const rot = 90 + Math.max(-4, Math.min(4, d)) * 6;
   const style = {
     "--x": `${d * SPACING + pickedSide * 260}px`,
     "--rot": picked ? "0deg" : `${rot}deg`,
@@ -371,10 +385,6 @@ const Record = memo(function Record({ id, item, d, picked, pickedSide, onPick, o
       role="option"
       aria-selected={ad < 0.5}
       aria-label={title}
-      onClick={(e) => {
-        e.stopPropagation();
-        onPick();
-      }}
     >
       <div className="rec-face rec-front">
         {item.image ? <img src={item.image} alt="" draggable={false} /> : <span className="rec-noimg">{item.name.slice(0, 2)}</span>}
@@ -397,7 +407,7 @@ const Record = memo(function Record({ id, item, d, picked, pickedSide, onPick, o
           </div>
         )}
       </div>
-      <div className="rec-face rec-back" />
+      <div className="rec-face rec-back">{item.image && <img src={item.image} alt="" draggable={false} />}</div>
       <Spine side="l" name={item.name} sub={item.subtitle} />
       <Spine side="r" name={item.name} sub={item.subtitle} />
     </div>
