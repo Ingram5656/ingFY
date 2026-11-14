@@ -20,8 +20,21 @@ export interface AccountStatus {
  * Spotify 账号和当前歌曲的收藏状态。
  * liked 为 null 表示不知道：没登录、正在查询、或者当前不是在 Spotify 放歌。
  */
+// 记住上次的登录状态，启动时先按它显示，免得"曲库/专辑"按钮等后端回话后才闪出来
+const LOGGED_IN_KEY = "ingfy.spotify.loggedIn";
+function cachedLoggedIn() {
+  try { return localStorage.getItem(LOGGED_IN_KEY) === "1"; } catch { return false; }
+}
+
 export function useSpotify(now: NowPlaying | null) {
-  const [account, setAccount] = useState<AccountStatus>({ loggedIn: false, displayName: "", needsReauth: false });
+  const [account, setAccountState] = useState<AccountStatus>(() => ({ loggedIn: cachedLoggedIn(), displayName: "", needsReauth: false }));
+  /** 后端已经告诉过我们真实的登录状态 */
+  const [ready, setReady] = useState(false);
+  const setAccount = (a: AccountStatus) => {
+    setAccountState(a);
+    setReady(true);
+    try { localStorage.setItem(LOGGED_IN_KEY, a.loggedIn ? "1" : "0"); } catch {}
+  };
   const [liked, setLiked] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; kind: "ok" | "error" } | null>(null);
@@ -29,7 +42,7 @@ export function useSpotify(now: NowPlaying | null) {
 
   useEffect(() => {
     const un: Promise<UnlistenFn>[] = [];
-    invoke<AccountStatus>("spotify_status").then(setAccount).catch(() => {});
+    invoke<AccountStatus>("spotify_status").then(setAccount).catch(() => setReady(true));
     un.push(listen<AccountStatus>("spotify-account", (e) => setAccount(e.payload)));
     un.push(listen<boolean>("liked-changed", (e) => setLiked(e.payload)));
     return () => un.forEach((p) => p.then((u) => u()));
@@ -88,5 +101,5 @@ export function useSpotify(now: NowPlaying | null) {
     setLiked(null);
   };
 
-  return { account, liked, busy, message, toggleLike, login, logout };
+  return { account, ready, liked, busy, message, toggleLike, login, logout };
 }

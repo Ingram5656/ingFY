@@ -158,14 +158,22 @@ export default function FullScreen() {
     spotify.account.loggedIn && !spotify.account.needsReauth ? spotify.toggleLike() : setSettingsOpen(true);
   const heartDisabled = spotify.account.loggedIn && !spotify.account.needsReauth && spotify.liked === null;
 
-  const vinyl = settings.viewMode === "vinyl";
-  const library = settings.viewMode === "playlists" || settings.viewMode === "albums";
+  // 曲库和专辑只在登录 Spotify 后出现（登录过期也留着，里面会提示重新连接）
+  const libraryAvailable = spotify.account.loggedIn;
+  const savedLibrary = settings.viewMode === "playlists" || settings.viewMode === "albums";
+  // 退出登录时正停在曲库/专辑，就回到歌词。等后端报了真实状态再改，免得启动时把记住的视图冲掉
+  const viewMode = savedLibrary && !libraryAvailable ? "lyrics" : settings.viewMode;
+  useEffect(() => {
+    if (spotify.ready && savedLibrary && !libraryAvailable) update({ viewMode: "lyrics" });
+  }, [spotify.ready, savedLibrary, libraryAvailable]); // eslint-disable-line react-hooks/exhaustive-deps
+  const vinyl = viewMode === "vinyl";
+  const library = viewMode === "playlists" || viewMode === "albums";
   // 歌词界面显示什么：拾音灯关着时两样都显示（开关也锁住）
   const showLyrics = !settings.lightsOn || settings.showLyrics;
   const showAlbum = !settings.lightsOn || settings.showAlbum;
   const layout = showLyrics && showAlbum ? "both" : showAlbum ? "album" : showLyrics ? "lyrics" : "none";
   // 歌词 ⇄ 唱片：新旧两层同时淡入淡出，320ms 内完成
-  const modeLayers = useCrossfade(settings.viewMode, 320);
+  const modeLayers = useCrossfade(viewMode, 320);
   // 灯效切换：旧灯效收起、新灯效展开
   // 关掉拾音灯也走同一套：旧灯效收起淡出，而不是直接消失
   const lightLayers = useCrossfade(settings.lightsOn ? settings.lightStyle : "off", 420);
@@ -175,7 +183,7 @@ export default function FullScreen() {
   const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen || listOpen || moreOpen || pickerOpen || shareOpen);
   const sleepFading = sleep.left !== null && sleep.left <= SLEEP_FADE_MS;
   // 上下栏收起再出现时也重新量一次滑块位置
-  useSegThumb(modeSegRef, `${settings.viewMode}|${idle}`);
+  useSegThumb(modeSegRef, `${viewMode}|${idle}|${libraryAvailable}`);
   useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}`);
   const bg = settings.background;
   const showImage = bg === "image" && bgImage;
@@ -207,13 +215,15 @@ export default function FullScreen() {
                 ["playlists", t("曲库")],
                 ["albums", t("专辑")],
               ] as const
-            ).map(([id, name]) => (
+            )
+              .filter(([id]) => libraryAvailable || (id !== "playlists" && id !== "albums"))
+              .map(([id, name]) => (
               <button
                 key={id}
                 data-seg
                 role="radio"
-                aria-checked={settings.viewMode === id}
-                className={settings.viewMode === id ? "is-on" : ""}
+                aria-checked={viewMode === id}
+                className={`${viewMode === id ? "is-on" : ""}${id === "playlists" || id === "albums" ? " seg-extra" : ""}`}
                 onClick={() => {
                   update({ viewMode: id });
                   setVinylMenuOpen(false);
@@ -224,7 +234,7 @@ export default function FullScreen() {
               </button>
             ))}
           </div>
-          {settings.viewMode === "lyrics" && (
+          {viewMode === "lyrics" && (
           <div className={`seg seg--lights glass${settings.lightsOn ? "" : " is-off"}`} role="group" aria-label={t("拾音灯")}>
             {/* 拾音灯总开关，和灯效切换共用一条工具栏 */}
             <button

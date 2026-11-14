@@ -938,3 +938,12 @@ span.nl-cover { position: relative; overflow: hidden; display: block; }
 .st-tagline:hover { background: rgba(255,255,255,0.06); }
 .st-tagline.is-empty { font-weight: 400; font-size: 13px; color: rgba(255,255,255,0.4); }
 .st-tagline-input { width: 340px; flex: none; height: 38px; text-align: center; }
+
+/* 登录 Spotify 后，"曲库/专辑"两个按钮从右边长出来 */
+.seg button.seg-extra { animation: seg-extra-in 0.42s var(--ease-apple) both; }
+.seg button.seg-extra + button.seg-extra { animation-delay: 0.06s; }
+@keyframes seg-extra-in {
+  from { opacity: 0; transform: translateX(-10px) scale(0.86); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) { .seg button.seg-extra { animation: none; } }
