@@ -9,11 +9,41 @@ type Fn = (bands: number[]) => void;
 const subs = new Set<Fn>();
 let started = false;
 
+// ---------- 灵敏度、反应速度（设置里的两个滑块，0~100，50 是原样） ----------
+
+let gain = 1;
+let gamma = 1;
+let response = 50;
+
+/**
+ * 灵敏度：同样大的声音，灯跳多高。
+ * 调高：放大并抬起小声的部分，细节也能让灯明显跳；调低：压低小声的部分，只有响的地方才跳得高。
+ */
+export function setLightSensitivity(v: number) {
+  gain = 2 ** ((v - 50) / 50); // 0.5 ~ 2 倍
+  gamma = 1.3 - (v / 100) * 0.6; // 1.3 ~ 0.7，越小越能把小声抬起来
+}
+
+/** 按灵敏度换算一个 0~1 的灯高 */
+export function shapeLevel(x: number): number {
+  return x <= 0 ? 0 : Math.min(1, gain * Math.pow(x, gamma));
+}
+
+/** 反应速度：声音来了灯窜得多快、声音停了落得多快。真实频谱在后端平滑，这里记一份给预览用 */
+export function setLightResponse(v: number) {
+  response = v;
+}
+
+/** 每 25 毫秒一帧时，上升和回落各走剩余距离的多少（和后端 audio.rs 用同一个公式） */
+export function responseCoef(): { attack: number; release: number } {
+  return { attack: 0.35 + (response / 100) * 0.6, release: 0.16 * 2.8 ** ((response - 50) / 50) };
+}
+
 export function onAudioLevels(fn: Fn): () => void {
   if (!started) {
     started = true;
     listen<number[]>("audio-levels", (e) => {
-      const bands = e.payload.map((v) => v / 255);
+      const bands = e.payload.map((v) => shapeLevel(v / 255));
       subs.forEach((f) => f(bands));
     });
   }

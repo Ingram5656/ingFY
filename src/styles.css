@@ -288,8 +288,8 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 @keyframes pulse { from { transform: scaleY(0.5); opacity: 0.75; } to { transform: scaleY(1); opacity: 1; } }
 
 /* 灯管 */
-.lights--tube { inset: 18% 0 22%; display: flex; align-items: center; justify-content: center; gap: 32px; }
-.lights--tube .light { position: relative; width: 44px; height: calc(var(--level) * 100%); border-radius: 999px;
+.lights--tube { inset: 18% 0 22%; display: flex; align-items: center; justify-content: center; gap: max(6px, calc(76px - 44px * var(--thick, 1))); }
+.lights--tube .light { position: relative; width: calc(44px * var(--thick, 1)); height: calc(var(--level) * 100%); border-radius: 999px;
   background: linear-gradient(180deg, rgba(255,255,255,0.55) 0%, var(--c) 18%, var(--c) 70%, rgba(255,255,255,0.1) 100%);
   border: 1px solid rgba(255,255,255,0.45); opacity: 0.8;
   box-shadow: 0 0 50px var(--c), inset 6px 0 10px rgba(255,255,255,0.35), inset -6px 0 12px rgba(0,0,0,0.18); }
@@ -308,13 +308,13 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   background: radial-gradient(circle, color-mix(in srgb, var(--c1) 35%, transparent) 0%, transparent 70%);
   box-shadow: 0 0 40px color-mix(in srgb, var(--c3) 60%, transparent), inset 0 0 30px rgba(255,255,255,0.12); }
 .lights--ring .ring-arm { position: absolute; left: 50%; top: 50%; width: 0; height: 0; rotate: var(--angle); }
-.lights--ring .light { position: absolute; left: -0.8cqw; bottom: 37cqw; width: 1.6cqw; height: calc(3cqw + var(--level) * 11cqw);
+.lights--ring .light { position: absolute; left: calc(-0.8cqw * var(--thick, 1)); bottom: 37cqw; width: calc(1.6cqw * var(--thick, 1)); height: calc(3cqw + var(--level) * 11cqw);
   border-radius: 999px; transform-origin: 50% 100%;
   background: linear-gradient(0deg, var(--c), rgba(255,255,255,0.85)); box-shadow: 0 0 12px var(--c); }
 
 /* 声波 */
 .lights--wave { inset: 24% 60px 30%; display: flex; align-items: center; justify-content: space-between; }
-.lights--wave .light { width: 12px; height: calc(10% + var(--level) * 90%); border-radius: 999px; opacity: 0.85;
+.lights--wave .light { width: calc(12px * var(--thick, 1)); height: calc(10% + var(--level) * 90%); border-radius: 999px; opacity: 0.85;
   background: linear-gradient(180deg, rgba(255,255,255,0.7), var(--c) 30%, var(--c) 70%, rgba(255,255,255,0.7));
   box-shadow: 0 0 18px var(--c); }
 
@@ -341,7 +341,7 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .dl-line.is-active { --k-sung: var(--lyric-sung, #fff); --k-rest: rgba(255,255,255,0.42); --line-on: 1; transform: scale(1);
   filter: drop-shadow(0 2px 6px rgba(20,10,50,0.55)) drop-shadow(0 0 14px color-mix(in srgb, var(--accent-soft) 60%, transparent)); }
 .dl-glow { position: absolute; left: 30px; right: 30px; bottom: -34px; height: 70px; display: flex; justify-content: space-between; align-items: flex-end; opacity: 0.75; pointer-events: none; }
-.dl-glow span { width: 50px; height: 60px; border-radius: 999px; filter: blur(18px); animation: pulse 1.1s ease-in-out infinite alternate; }
+.dl-glow span { width: calc(50px * var(--thick, 1)); height: 60px; border-radius: 999px; filter: blur(18px); animation: pulse 1.1s ease-in-out infinite alternate; }
 
 /* 锁定：去掉玻璃底，只留发光文字 */
 .dl.is-locked .dl-toolbar { display: none; }
@@ -971,8 +971,8 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 .isl-lights .lights { opacity: calc(var(--light-alpha, 0.85) * 0.62); }
 .isl-lights::after { content: ""; position: absolute; inset: 0; z-index: 2;
   background: linear-gradient(90deg, rgba(0,0,0,0.5), rgba(0,0,0,0.08) 45%, rgba(0,0,0,0.15)); }
-.isl-lights .lights--tube { inset: 14% 3%; gap: 3.2%; }
-.isl-lights .lights--tube .light { width: 3.6%; border-width: 0.5px; box-shadow: 0 0 calc(12 * var(--u)) var(--c), inset 1px 0 2px rgba(255,255,255,0.35); }
+.isl-lights .lights--tube { inset: 14% 3%; gap: max(0.4%, calc(6.8% - 3.6% * var(--thick, 1))); }
+.isl-lights .lights--tube .light { width: calc(3.6% * var(--thick, 1)); border-width: 0.5px; box-shadow: 0 0 calc(12 * var(--u)) var(--c), inset 1px 0 2px rgba(255,255,255,0.35); }
 .isl-lights .lights--hist { left: 2%; right: 2%; height: 92%; gap: max(1px, calc(1.5 * var(--u))); }
 .isl-lights .lights--hist .light { border-radius: 2px 2px 0 0; box-shadow: 0 0 calc(6 * var(--u)) color-mix(in srgb, var(--c) 60%, transparent);
   background: repeating-linear-gradient(0deg, var(--c) 0 calc(3.5 * var(--u)), transparent calc(3.5 * var(--u)) calc(5 * var(--u))); }
@@ -980,7 +980,7 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 .is-open .isl-lights .lights--ring { width: calc(250 * var(--u)); left: 50%; }
 .isl-lights .lights--ring::before { border-width: 1px; }
 .isl-lights .lights--wave { inset: 16% 3%; }
-.isl-lights .lights--wave .light { width: max(2px, calc(3 * var(--u))); box-shadow: 0 0 calc(6 * var(--u)) var(--c); }
+.isl-lights .lights--wave .light { width: max(1.5px, calc(3 * var(--u) * var(--thick, 1))); box-shadow: 0 0 calc(6 * var(--u)) var(--c); }
 
 /* 收起：左边封面，右边一行歌词 */
 .isl-compact { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; gap: calc(11 * var(--u));
@@ -1033,3 +1033,9 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 .st-vinyl-editor .vm-block { padding: 8px 0; }
 .st-vinyl-editor .vm-block + .vm-block { border-top: 1px solid rgba(255,255,255,0.08); }
 .st-vinyl-editor h3 { margin: 0; font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); }
+
+/* 设置里的拾音灯预览：按全屏界面 1440 宽的设计尺寸画，再整体缩小放进卡片 */
+.st-lpv { position: relative; width: 100%; aspect-ratio: 1440 / 640; overflow: hidden; border-radius: 14px;
+  background: radial-gradient(ellipse at 50% 60%, color-mix(in srgb, var(--c1, #6F48C6) 22%, #0d0820), #0a0618); }
+.st-lpv-stage { position: absolute; left: 0; top: 0; width: 1440px; height: 640px; transform-origin: 0 0; }
+.st-lpv-tag { position: absolute; right: 10px; bottom: 8px; z-index: 3; font-size: 11px; color: rgba(255,255,255,0.55); }

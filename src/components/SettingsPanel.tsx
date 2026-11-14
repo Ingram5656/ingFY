@@ -7,7 +7,8 @@ import type { LightStyle } from "./Lights";
 import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
 import { COLOR_PRESETS, pickGradient } from "../lib/palette";
-import { deskScale, islandScale, lightPalette, lyricScale } from "../lib/settings";
+import { deskScale, islandScale, lightPalette, lyricScale, thickScale } from "../lib/settings";
+import { Lights } from "./Lights";
 import { VinylEditor } from "./Vinyl";
 import { t, tMsg, useLang } from "../lib/i18n";
 
@@ -230,6 +231,39 @@ function Slider({ label, value, onChange, display }: { label: string; value: num
       </span>
       <input type="range" min={0} max={100} value={value} onChange={(e) => onChange(Number(e.target.value))} />
     </label>
+  );
+}
+
+/** 滑块数值的文字说明：50 附近是"默认" */
+function levelWord(v: number): string {
+  if (v <= 15) return t("很低");
+  if (v < 40) return t("低");
+  if (v <= 60) return t("默认");
+  if (v < 85) return t("高");
+  return t("很高");
+}
+
+/**
+ * 拾音灯预览：和全屏界面同一套灯，按 1440 宽的设计尺寸画好后整体缩小。
+ * 正在放歌时跟着真实声音跳，没声音时用一段假节奏，拖滑块马上能看出差别。
+ */
+function LightPreview({ style, palette, thickness, beat }: { style: LightStyle; palette: string[]; thickness: number; beat: boolean }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.4);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setScale(el.clientWidth / 1440));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div className="st-lpv" ref={boxRef} aria-label={t("拾音灯预览")} role="img">
+      <div className="st-lpv-stage" style={{ transform: `scale(${scale})` }}>
+        <Lights palette={palette} style={style} playing reactive={beat} thickness={thickness} demo />
+      </div>
+      {!beat && <span className="st-lpv-tag">{t("跟着节拍闪烁已关闭")}</span>}
+    </div>
   );
 }
 
@@ -473,6 +507,33 @@ export function SettingsPanel(p: Props) {
             </div>
           </div>
           <Toggle label={t("跟着节拍闪烁")} sub={t("关掉后灯光只缓慢呼吸")} on={s.beat} onChange={(v) => update({ beat: v })} />
+        </Group>
+        <Group
+          title={t("粗细和灵敏度")}
+          foot={
+            s.lightThickness !== 50 || s.lightSensitivity !== 50 || s.lightResponse !== 50 ? (
+              <button className="st-link" onClick={() => update({ lightThickness: 50, lightSensitivity: 50, lightResponse: 50 })}>
+                {t("恢复默认")}
+              </button>
+            ) : (
+              t("全屏、桌面歌词和灵动岛的拾音灯一起生效。")
+            )
+          }
+        >
+          <div className="st-cell">
+            <LightPreview style={s.lightStyle} palette={lightPal} thickness={thickScale(s.lightThickness)} beat={s.beat} />
+          </div>
+          <div className="st-cell">
+            <Slider label={t("粗细")} value={s.lightThickness} display={`${Math.round(thickScale(s.lightThickness) * 100)}%`} onChange={(v) => update({ lightThickness: v })} />
+          </div>
+          <div className="st-cell">
+            <Slider label={t("灵敏度")} value={s.lightSensitivity} display={levelWord(s.lightSensitivity)} onChange={(v) => update({ lightSensitivity: v })} />
+            <p className="st-note">{t("越高，小声的地方灯也跳得越高；越低，只有响的地方才跳满。")}</p>
+          </div>
+          <div className="st-cell">
+            <Slider label={t("反应速度")} value={s.lightResponse} display={levelWord(s.lightResponse)} onChange={(v) => update({ lightResponse: v })} />
+            <p className="st-note">{t("越快，灯起落越利落；越慢，起落越柔和、拖尾越长。")}</p>
+          </div>
         </Group>
         <Group>
           <div className="st-cell">

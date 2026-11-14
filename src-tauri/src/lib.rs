@@ -105,6 +105,12 @@ fn set_desktop_locked(app: AppHandle, state: State<AppState>, locked: bool) -> R
     app.emit("desktop-locked", locked).map_err(|e| e.to_string())
 }
 
+/// 拾音灯的反应速度（0~100），后端平滑频谱时用
+#[tauri::command]
+fn set_light_response(value: u8) {
+    audio::RESPONSE.store(value.min(100), std::sync::atomic::Ordering::Relaxed);
+}
+
 /// 灵动岛显示 / 隐藏、锁定 / 不锁定。返回现在是不是贴在顶边
 #[tauri::command]
 fn island_set(app: AppHandle, state: State<AppState>, visible: bool, locked: bool) -> Result<bool, String> {
@@ -819,6 +825,7 @@ pub fn run() {
             set_desktop_visible,
             island_set,
             island_layout,
+            set_light_response,
             lyrics_options,
             lyrics_by_id,
             save_share_image,

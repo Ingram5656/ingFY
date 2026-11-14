@@ -13,7 +13,7 @@ import { findLineIndex, lineProgress } from "../lib/lrc";
 import { useLyricPref } from "../lib/lyricPrefs";
 import { trackKey } from "../lib/types";
 import { mediaControl, useAlbumPalette, useLyrics, usePlayer, usePosition, useSeek } from "../lib/player";
-import { islandScale, lightPalette, useApplySettings, useSettings } from "../lib/settings";
+import { islandScale, lightPalette, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { LOOK_IDS, seedFrom } from "../lib/vinyl";
 import { t, useLang } from "../lib/i18n";
 
@@ -203,7 +203,7 @@ export default function Island() {
       <div className="isl" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerEnter={onEnter} onPointerLeave={onLeave}>
         {settings.islandLightsOn && (
           <div className="isl-lights">
-            <Lights palette={lightPalette(settings, palette)} style={settings.islandLightStyle} playing={!!now?.playing} reactive={settings.beat} />
+            <Lights palette={lightPalette(settings, palette)} style={settings.islandLightStyle} playing={!!now?.playing} reactive={settings.beat} thickness={thickScale(settings.lightThickness ?? 50)} />
           </div>
         )}
 

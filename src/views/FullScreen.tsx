@@ -15,7 +15,7 @@ import { markDirection } from "../lib/vinyl";
 import { DesktopLyricsIcon, GearIcon, HeartIcon, LockIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from "../components/Icons";
 import { findLineIndex, lineProgress } from "../lib/lrc";
 import { mediaControl, useAlbumPalette, useLyrics, usePlayer, usePosition, useSeek } from "../lib/player";
-import { lightPalette, loadBackgroundImage, useApplySettings, useSettings } from "../lib/settings";
+import { lightPalette, loadBackgroundImage, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
 import { trackKey } from "../lib/types";
@@ -391,7 +391,7 @@ export default function FullScreen() {
                   .map((l) => (
                     <div key={l.key} className={`light-layer${l.leaving ? " is-leaving" : " is-entering"}`}>
                       <div className="light-dim">
-                        <Lights palette={lightPalette(settings, palette)} style={l.key as LightStyle} playing={!!now?.playing} reactive={settings.beat} />
+                        <Lights palette={lightPalette(settings, palette)} style={l.key as LightStyle} playing={!!now?.playing} reactive={settings.beat} thickness={thickScale(settings.lightThickness ?? 50)} />
                       </div>
                     </div>
                   ))}

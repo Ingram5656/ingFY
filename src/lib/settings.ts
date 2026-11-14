@@ -5,6 +5,7 @@ import type { LightStyle } from "../components/Lights";
 import { mixPalette } from "./palette";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveLang, setLang, type LangSetting } from "./i18n";
+import { setLightResponse, setLightSensitivity } from "./audio";
 
 export type BackgroundKind = "fluid" | "gradient" | "image" | "cover";
 
@@ -23,6 +24,12 @@ export interface Settings {
   beat: boolean;
   /** 拾音灯总开关 */
   lightsOn: boolean;
+  /** 灯的粗细 0~100，50 是原来的粗细（0.5~1.5 倍）；直方图变粗是减少柱子数量 */
+  lightThickness: number;
+  /** 灵敏度：同样大的声音灯跳多高，0~100，50 是原样 */
+  lightSensitivity: number;
+  /** 反应速度：灯起落有多快，0~100，50 是原样 */
+  lightResponse: number;
   lyricColorMode: "album" | "custom";
   lyricColor: string;
   /** 有翻译时在歌词下面显示翻译 */
@@ -88,6 +95,9 @@ export const DEFAULT_SETTINGS: Settings = {
   vividness: 50,
   beat: true,
   lightsOn: true,
+  lightThickness: 50,
+  lightSensitivity: 50,
+  lightResponse: 50,
   lyricColorMode: "album",
   lyricColor: "#FFFFFF",
   showTranslation: true,
@@ -211,8 +221,17 @@ export function useApplySettings(s: Settings) {
     setLang(lang);
     void invoke("set_language", { lang }).catch(() => {});
   }, [s.language]);
+  // 拾音灯灵敏度在每个窗口里换算；反应速度交给后端，在平滑频谱时用
+  useEffect(() => {
+    setLightSensitivity(s.lightSensitivity ?? 50);
+  }, [s.lightSensitivity]);
+  useEffect(() => {
+    setLightResponse(s.lightResponse ?? 50);
+    void invoke("set_light_response", { value: Math.round(s.lightResponse ?? 50) }).catch(() => {});
+  }, [s.lightResponse]);
   useEffect(() => {
     const root = document.documentElement;
+    root.style.setProperty("--thick", String(thickScale(s.lightThickness ?? 50)));
     root.style.setProperty(
       "--lyric-sung",
       s.lyricColorMode === "custom" ? s.lyricColor : "color-mix(in srgb, #fff 45%, var(--c0))",
@@ -233,6 +252,8 @@ export function useApplySettings(s: Settings) {
 }
 
 export const lyricScale = (v: number) => 0.7 + (v / 100) * 0.6;
+/** 拾音灯粗细：0.5~1.5 倍 */
+export const thickScale = (v: number) => 0.5 + v / 100;
 /** 灵动岛缩放：0.75~1.25 倍 */
 export const islandScale = (v: number) => 0.75 + (v / 100) * 0.5;
 export const deskScale = (v: number) => 0.8 + (v / 100) * 0.4;

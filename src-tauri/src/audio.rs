@@ -29,6 +29,9 @@ struct Shared {
 }
 
 /// 启动采集和分析线程
+/// 拾音灯的反应速度 0~100，前端设置里改，50 是默认
+pub static RESPONSE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(50);
+
 pub fn start(app: AppHandle) {
     let shared = Arc::new(Mutex::new(Shared {
         samples: VecDeque::with_capacity(FFT_SIZE * 2),
@@ -208,9 +211,12 @@ fn analyze_loop(app: AppHandle, shared: Arc<Mutex<Shared>>) {
             }
         }
 
-        // 起快落慢，灯跳得有弹性又不抖
+        // 起快落慢，灯跳得有弹性又不抖。快慢由设置里的"反应速度"决定（50 是原来的 0.65 / 0.16）
+        let r = RESPONSE.load(Ordering::Relaxed).min(100) as f32;
+        let attack = 0.35 + r / 100.0 * 0.6;
+        let release = 0.16 * 2.8f32.powf((r - 50.0) / 50.0);
         for b in 0..BANDS {
-            let k = if target[b] > smooth[b] { 0.65 } else { 0.16 };
+            let k = if target[b] > smooth[b] { attack } else { release };
             smooth[b] += (target[b] - smooth[b]) * k;
         }
 

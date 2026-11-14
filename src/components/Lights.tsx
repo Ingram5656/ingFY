@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { pickGradient } from "../lib/palette";
-import { mirrored, onAudioLevels, resample } from "../lib/audio";
+import { mirrored, onAudioLevels, resample, responseCoef, shapeLevel } from "../lib/audio";
 
 export type LightStyle = "tube" | "hist" | "ring" | "wave";
 
@@ -10,6 +10,10 @@ interface Props {
   playing: boolean;
   /** 跟着音乐跳（设置里的"跟着节拍闪烁"）。关掉时只缓慢呼吸 */
   reactive: boolean;
+  /** 粗细倍数（0.5~1.5）。直方图的柱子是铺满整排的，变粗就是减少根数 */
+  thickness?: number;
+  /** 演示：超过 1 秒没有真实频谱时，用一段 120 BPM 的假节奏驱动，让设置里的预览也能看出灵敏度和反应速度 */
+  demo?: boolean;
 }
 
 const COUNT: Record<LightStyle, number> = { tube: 14, hist: 48, ring: 64, wave: 40 };
@@ -26,8 +30,8 @@ function mapBands(bands: number[], style: LightStyle, n: number): number[] {
  * 每根灯的高度由 --lv 驱动；回调里直接写 DOM，不触发 React 重绘。
  * 超过 1 秒没收到频谱（没声音、或者采集不可用）就退回 CSS 模拟动画。
  */
-export function Lights({ palette, style, playing, reactive }: Props) {
-  const n = COUNT[style];
+export function Lights({ palette, style, playing, reactive, thickness = 1, demo = false }: Props) {
+  const n = style === "hist" ? Math.max(16, Math.min(96, Math.round(COUNT.hist / thickness))) : COUNT[style];
   const boxRef = useRef<HTMLDivElement>(null);
   const lightRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
@@ -58,7 +62,8 @@ export function Lights({ palette, style, playing, reactive }: Props) {
       return;
     }
     let idle: ReturnType<typeof setTimeout> | undefined;
-    const off = onAudioLevels((bands) => {
+    let lastReal = 0;
+    const draw = (bands: number[]) => {
       const values = mapBands(bands, style, n);
       const loud = values.some((v) => v > 0.02);
       for (let i = 0; i < n; i++) lightRefs.current[i]?.style.setProperty("--lv", values[i].toFixed(3));
@@ -67,13 +72,44 @@ export function Lights({ palette, style, playing, reactive }: Props) {
         clearTimeout(idle);
         idle = setTimeout(() => box.classList.remove("is-live"), 1000);
       }
+    };
+    const off = onAudioLevels((bands) => {
+      lastReal = Date.now();
+      draw(bands);
     });
+    // 演示节奏：底鼓每拍一下，反拍有镲片，中间夹一点起伏；和真实频谱一样经过灵敏度换算、按反应速度平滑
+    let timer: ReturnType<typeof setInterval> | undefined;
+    if (demo) {
+      const smooth = new Array<number>(64).fill(0);
+      const t0 = Date.now();
+      timer = setInterval(() => {
+        if (Date.now() - lastReal < 1000) return;
+        const t = (Date.now() - t0) / 1000;
+        const beat = t % 0.5;
+        const kick = Math.exp(-beat * 9);
+        const hat = Math.exp(-((t + 0.25) % 0.5) * 22);
+        const swell = 0.5 + 0.5 * Math.sin(t * 0.9);
+        const { attack, release } = responseCoef();
+        for (let i = 0; i < 64; i++) {
+          const f = i / 63;
+          const raw =
+            kick * Math.max(0, 1 - f * 2.2) * 0.95 +
+            (0.18 + 0.32 * swell) * Math.exp(-((f - 0.35) ** 2) / 0.05) * (0.7 + 0.3 * Math.sin(t * 7 + i)) +
+            hat * Math.max(0, f - 0.55) * 1.1 +
+            0.04;
+          const target = shapeLevel(Math.min(1, raw));
+          smooth[i] += (target - smooth[i]) * (target > smooth[i] ? attack : release);
+        }
+        draw(smooth);
+      }, 25);
+    }
     return () => {
       off();
+      clearInterval(timer);
       clearTimeout(idle);
       box.classList.remove("is-live");
     };
-  }, [reactive, style, n]);
+  }, [reactive, style, n, demo]);
 
   return (
     <div ref={boxRef} className={`lights lights--${style}${playing ? "" : " is-paused"}`} aria-hidden="true">
