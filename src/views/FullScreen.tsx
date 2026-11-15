@@ -286,9 +286,19 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const bg = settings.background;
   // 墨晕自带一整套配色：宣纸底、深色字，不用背景和颜色设置。只在歌词界面生效
   const ink = !vinyl && !library && settings.lightsOn && settings.lightStyle === "ink";
-  // 底色：默认深紫、跟随专辑（封面颜色压暗）或自己挑的颜色
-  const base =
-    settings.baseColorMode === "album" ? deepTone(palette) : settings.baseColorMode === "custom" ? settings.baseColor : DEFAULT_BASE;
+  // 底色：默认深紫、跟随专辑（封面颜色压暗）、自己挑的颜色，或者透明（直接透出桌面）
+  const clear = settings.baseColorMode === "transparent";
+  const base = clear
+    ? "transparent"
+    : settings.baseColorMode === "album"
+      ? deepTone(palette)
+      : settings.baseColorMode === "custom"
+        ? settings.baseColor
+        : DEFAULT_BASE;
+  // 透明底色：整个页面不铺任何底，窗口后面的东西透上来
+  useEffect(() => {
+    document.documentElement.classList.toggle("is-clear", clear);
+  }, [clear]);
   // 3D 模式：只在歌词界面、拾音灯开着时生效
   const d3 = settings.light3d && settings.lightsOn && !vinyl && !library;
   // 有时间轴的歌词在 3D 里画进场景，界面上原来那一列收起来；没有时间轴的照旧显示
@@ -526,7 +536,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
                         <LightLayer
                           style={l.key as LightStyle}
                           palette={lightPalette(settings, palette)}
-                          base={base}
+                          base={clear ? DEFAULT_BASE : base}
                           alpha={0.25 + (settings.lightBrightness / 100) * 0.75}
                           thickness={thickScale(settings.lightThickness ?? 50)}
                           playing={!!now?.playing}

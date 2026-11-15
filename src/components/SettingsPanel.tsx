@@ -740,6 +740,14 @@ export function SettingsPanel(p: Props) {
             </span>
             {s.baseColorMode === "album" && <CheckIcon />}
           </button>
+          <button className="st-cell st-choice" role="radio" aria-checked={s.baseColorMode === "transparent"} onClick={() => update({ baseColorMode: "transparent" })}>
+            <span className="st-dot st-dot--clear" />
+            <span className="st-option-text">
+              <span>{t("透明")}</span>
+              <small>{t("没有底色，直接透出窗口后面的桌面")}</small>
+            </span>
+            {s.baseColorMode === "transparent" && <CheckIcon />}
+          </button>
           <div className="st-cell">
             <span className="st-cell-label">{t("固定颜色")}</span>
             <div className="st-swatches" role="radiogroup" aria-label={t("底色")}>
