@@ -1248,8 +1248,11 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 .st-dlpv-pin { position: sticky; top: 0; z-index: 2; margin-bottom: 18px; }
 .st-dlpv-pin .st-dlpv { box-shadow: 0 10px 30px rgba(8,4,32,0.45), 0 0 0 1px rgba(255,255,255,0.12); }
 
-/* ===================== 透明底色 ===================== */
-/* 底色选"透明"时：页面不铺底，窗口后面的桌面（比如 Wallpaper Engine 的壁纸）直接透上来 */
-html.is-clear, html.is-clear body { background: transparent; }
+/* ===================== 透明底色（不加底色） ===================== */
+/* --base 是 transparent：纯色渐变只用专辑的颜色压暗、暗度蒙版是不带色调的黑。窗口本身不透明，最底下垫黑色 */
+.fs.is-clear { background-color: #000; }
 /* 设置里"透明"那一项的圆点：灰白棋盘格，表示什么都没有 */
 .st-dot--clear { background: repeating-conic-gradient(rgba(255,255,255,0.55) 0 25%, rgba(255,255,255,0.12) 0 50%) 50% / 12px 12px; }
+.st-choice[aria-disabled="true"] { cursor: not-allowed; }
+.st-choice[aria-disabled="true"] .st-dot, .st-choice[aria-disabled="true"] .st-option-text > span { opacity: 0.4; }
+.st-choice[aria-disabled="true"]:hover { background: transparent; }

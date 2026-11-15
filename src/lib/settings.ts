@@ -13,7 +13,7 @@ export type BackgroundKind = "fluid" | "gradient" | "image" | "video" | "cover";
 export interface Settings {
   background: BackgroundKind;
   /** 底色：色块之间、边角透出来的那层颜色，也决定暗度层和纯色渐变的色调 */
-  /** transparent：没有底色，窗口透明，直接透出后面的桌面（比如 Wallpaper Engine 的壁纸） */
+  /** transparent：没有底色——背景不往任何颜色里混，暗度蒙版是不带色调的黑；专辑流体必须有底色，不能选 */
   baseColorMode: "default" | "album" | "custom" | "transparent";
   baseColor: string;
   /** 背景模糊 0~100 */

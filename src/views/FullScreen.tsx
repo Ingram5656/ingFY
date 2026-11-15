@@ -286,8 +286,10 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const bg = settings.background;
   // 墨晕自带一整套配色：宣纸底、深色字，不用背景和颜色设置。只在歌词界面生效
   const ink = !vinyl && !library && settings.lightsOn && settings.lightStyle === "ink";
-  // 底色：默认深紫、跟随专辑（封面颜色压暗）、自己挑的颜色，或者透明（直接透出桌面）
-  const clear = settings.baseColorMode === "transparent";
+  // 底色：默认深紫、跟随专辑（封面颜色压暗）、自己挑的颜色，或者透明（不加底色）。
+  // 专辑流体是几团光飘在底色上，必须有底色：背景是流体（或者图片、视频、封面还没有、临时显示流体）时，透明按默认算
+  const fluidShown = bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork);
+  const clear = settings.baseColorMode === "transparent" && !fluidShown && !ink;
   const base = clear
     ? "transparent"
     : settings.baseColorMode === "album"
@@ -295,10 +297,6 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
       : settings.baseColorMode === "custom"
         ? settings.baseColor
         : DEFAULT_BASE;
-  // 透明底色：整个页面不铺任何底，窗口后面的东西透上来
-  useEffect(() => {
-    document.documentElement.classList.toggle("is-clear", clear);
-  }, [clear]);
   // 3D 模式：只在歌词界面、拾音灯开着时生效
   const d3 = settings.light3d && settings.lightsOn && !vinyl && !library;
   // 有时间轴的歌词在 3D 里画进场景，界面上原来那一列收起来；没有时间轴的照旧显示
@@ -312,7 +310,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const showCover = bg === "cover" && artwork;
 
   return (
-    <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}`} style={{ "--base": base } as CSSProperties}>
+    <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}${clear ? " is-clear" : ""}`} style={{ "--base": base } as CSSProperties}>
       {/* 背景层：铺满整个窗口 */}
       {(bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork)) && (
         <>

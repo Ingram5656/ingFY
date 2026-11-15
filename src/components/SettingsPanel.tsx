@@ -621,7 +621,8 @@ export function SettingsPanel(p: Props) {
       if (!importing) videoRef.current?.click();
       return;
     }
-    update({ background: id });
+    // 专辑流体必须有底色：之前选的是透明就退回默认
+    update(id === "fluid" && s.baseColorMode === "transparent" ? { background: id, baseColorMode: "default" } : { background: id });
   };
 
   const lyricColorSwatches = (
@@ -690,7 +691,7 @@ export function SettingsPanel(p: Props) {
                   className="st-link"
                   onClick={() => {
                     saveBackgroundImage(null);
-                    if (s.background === "image") update({ background: "fluid" });
+                    if (s.background === "image") update({ background: "fluid", ...(s.baseColorMode === "transparent" ? { baseColorMode: "default" as const } : {}) });
                   }}
                 >
                   {t("删除图片")}
@@ -707,7 +708,7 @@ export function SettingsPanel(p: Props) {
                   disabled={importing}
                   onClick={() => {
                     void deleteBackgroundVideo();
-                    if (s.background === "video") update({ background: "fluid" });
+                    if (s.background === "video") update({ background: "fluid", ...(s.baseColorMode === "transparent" ? { baseColorMode: "default" as const } : {}) });
                   }}
                 >
                   {t("删除视频")}
@@ -740,13 +741,20 @@ export function SettingsPanel(p: Props) {
             </span>
             {s.baseColorMode === "album" && <CheckIcon />}
           </button>
-          <button className="st-cell st-choice" role="radio" aria-checked={s.baseColorMode === "transparent"} onClick={() => update({ baseColorMode: "transparent" })}>
+          {/* 专辑流体是几团光飘在底色上，必须有底色，所以选流体时不能选透明 */}
+          <button
+            className="st-cell st-choice"
+            role="radio"
+            aria-checked={s.baseColorMode === "transparent" && s.background !== "fluid"}
+            aria-disabled={s.background === "fluid"}
+            onClick={() => s.background !== "fluid" && update({ baseColorMode: "transparent" })}
+          >
             <span className="st-dot st-dot--clear" />
             <span className="st-option-text">
               <span>{t("透明")}</span>
-              <small>{t("没有底色，直接透出窗口后面的桌面")}</small>
+              <small>{s.background === "fluid" ? t("专辑流体需要底色，换成其他背景后可选") : t("不加底色，背景不往任何颜色里混")}</small>
             </span>
-            {s.baseColorMode === "transparent" && <CheckIcon />}
+            {s.baseColorMode === "transparent" && s.background !== "fluid" && <CheckIcon />}
           </button>
           <div className="st-cell">
             <span className="st-cell-label">{t("固定颜色")}</span>
