@@ -9,13 +9,32 @@ import { setLightResponse, setLightSensitivity } from "./audio";
 import { DEFAULT_SHORTCUTS, shortcutsOf, type ShortcutMap } from "./shortcuts";
 
 export type BackgroundKind = "fluid" | "gradient" | "image" | "video" | "cover";
+export type BaseMode = "default" | "album" | "custom" | "transparent";
+export interface BasePref {
+  mode: BaseMode;
+  color: string;
+}
+
+/** 某种背景的底色设置。专辑流体必须有底色：存成透明的（旧设置里共用的那份）按默认算 */
+export function baseOf(s: Settings, kind: BackgroundKind): BasePref {
+  const p = s.baseByBg?.[kind] ?? { mode: s.baseColorMode, color: s.baseColor };
+  return kind === "fluid" && p.mode === "transparent" ? { mode: "default", color: p.color } : p;
+}
+/** 改某种背景的底色，不动其他背景的 */
+export function withBase(s: Settings, kind: BackgroundKind, patch: Partial<BasePref>): Partial<Settings> {
+  return { baseByBg: { ...s.baseByBg, [kind]: { ...baseOf(s, kind), ...patch } } };
+}
 
 export interface Settings {
   background: BackgroundKind;
-  /** 底色：色块之间、边角透出来的那层颜色，也决定暗度层和纯色渐变的色调 */
-  /** transparent：没有底色——背景不往任何颜色里混，暗度蒙版是不带色调的黑；专辑流体必须有底色，不能选 */
-  baseColorMode: "default" | "album" | "custom" | "transparent";
+  /**
+   * 底色：色块之间、边角透出来的那层颜色，也决定暗度层和纯色渐变的色调。
+   * 每种背景各存一份（baseByBg）；某种背景还没单独设过时用这里的值——也就是 2.2.0 之前大家共用的那一份。
+   * transparent：没有底色——背景不往任何颜色里混，暗度蒙版是不带色调的黑；专辑流体必须有底色，不能选
+   */
+  baseColorMode: BaseMode;
   baseColor: string;
+  baseByBg: Partial<Record<BackgroundKind, BasePref>>;
   /** 背景模糊 0~100 */
   bgBlur: number;
   /** 背景暗度 0~100 */
@@ -114,6 +133,7 @@ export const DEFAULT_SETTINGS: Settings = {
   background: "fluid",
   baseColorMode: "default",
   baseColor: "#1A1238",
+  baseByBg: {},
   bgBlur: 60,
   bgDim: 30,
   lightStyle: "wave",

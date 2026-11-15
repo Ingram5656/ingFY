@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
-import type { Settings, BackgroundKind } from "../lib/settings";
-import { lightOrderOf, downscaleImage, saveBackgroundImage } from "../lib/settings";
+import type { Settings, BackgroundKind, BasePref } from "../lib/settings";
+import { baseOf, withBase, lightOrderOf, downscaleImage, saveBackgroundImage } from "../lib/settings";
 import type { LightStyle } from "./Lights";
 import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
@@ -612,6 +612,10 @@ export function SettingsPanel(p: Props) {
     },
   ];
 
+  // 底色按当前选中的背景样式各存一份
+  const bp = baseOf(s, s.background);
+  const setBase = (patch: Partial<BasePref>) => update(withBase(s, s.background, patch));
+
   const chooseBg = (id: BackgroundKind) => {
     if (id === "image" && !p.bgImage) {
       fileRef.current?.click();
@@ -621,8 +625,7 @@ export function SettingsPanel(p: Props) {
       if (!importing) videoRef.current?.click();
       return;
     }
-    // 专辑流体必须有底色：之前选的是透明就退回默认
-    update(id === "fluid" && s.baseColorMode === "transparent" ? { background: id, baseColorMode: "default" } : { background: id });
+    update({ background: id });
   };
 
   const lyricColorSwatches = (
@@ -691,7 +694,7 @@ export function SettingsPanel(p: Props) {
                   className="st-link"
                   onClick={() => {
                     saveBackgroundImage(null);
-                    if (s.background === "image") update({ background: "fluid", ...(s.baseColorMode === "transparent" ? { baseColorMode: "default" as const } : {}) });
+                    if (s.background === "image") update({ background: "fluid" });
                   }}
                 >
                   {t("删除图片")}
@@ -708,7 +711,7 @@ export function SettingsPanel(p: Props) {
                   disabled={importing}
                   onClick={() => {
                     void deleteBackgroundVideo();
-                    if (s.background === "video") update({ background: "fluid", ...(s.baseColorMode === "transparent" ? { baseColorMode: "default" as const } : {}) });
+                    if (s.background === "video") update({ background: "fluid" });
                   }}
                 >
                   {t("删除视频")}
@@ -724,37 +727,37 @@ export function SettingsPanel(p: Props) {
             <input ref={videoRef} type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v" hidden onChange={pickVideo} />
           </div>
         </Group>
-        <Group title={t("底色")}>
-          <button className="st-cell st-choice" role="radio" aria-checked={s.baseColorMode === "default"} onClick={() => update({ baseColorMode: "default" })}>
+        <Group title={`${t("底色")}（${t(bgOptions.find((o) => o.id === s.background)?.label ?? "")}）`}>
+          <button className="st-cell st-choice" role="radio" aria-checked={bp.mode === "default"} onClick={() => setBase({ mode: "default" })}>
             <span className="st-dot" style={{ background: DEFAULT_BASE }} />
             <span className="st-option-text">
               <span>{t("默认")}</span>
               <small>{t("ingfy 的深紫")}</small>
             </span>
-            {s.baseColorMode === "default" && <CheckIcon />}
+            {bp.mode === "default" && <CheckIcon />}
           </button>
-          <button className="st-cell st-choice" role="radio" aria-checked={s.baseColorMode === "album"} onClick={() => update({ baseColorMode: "album" })}>
+          <button className="st-cell st-choice" role="radio" aria-checked={bp.mode === "album"} onClick={() => setBase({ mode: "album" })}>
             <span className="st-dot" style={{ background: deepTone(p.palette) }} />
             <span className="st-option-text">
               <span>{t("跟随专辑")}</span>
               <small>{t("用封面的颜色压暗，换歌时自动换色")}</small>
             </span>
-            {s.baseColorMode === "album" && <CheckIcon />}
+            {bp.mode === "album" && <CheckIcon />}
           </button>
           {/* 专辑流体是几团光飘在底色上，必须有底色，所以选流体时不能选透明 */}
           <button
             className="st-cell st-choice"
             role="radio"
-            aria-checked={s.baseColorMode === "transparent" && s.background !== "fluid"}
+            aria-checked={bp.mode === "transparent" && s.background !== "fluid"}
             aria-disabled={s.background === "fluid"}
-            onClick={() => s.background !== "fluid" && update({ baseColorMode: "transparent" })}
+            onClick={() => s.background !== "fluid" && setBase({ mode: "transparent" })}
           >
             <span className="st-dot st-dot--clear" />
             <span className="st-option-text">
               <span>{t("透明")}</span>
               <small>{s.background === "fluid" ? t("专辑流体需要底色，换成其他背景后可选") : t("不加底色，背景不往任何颜色里混")}</small>
             </span>
-            {s.baseColorMode === "transparent" && s.background !== "fluid" && <CheckIcon />}
+            {bp.mode === "transparent" && s.background !== "fluid" && <CheckIcon />}
           </button>
           <div className="st-cell">
             <span className="st-cell-label">{t("固定颜色")}</span>
@@ -764,19 +767,19 @@ export function SettingsPanel(p: Props) {
                   key={c.c}
                   className="st-swatch st-swatch--dark"
                   role="radio"
-                  aria-checked={s.baseColorMode === "custom" && s.baseColor.toUpperCase() === c.c}
+                  aria-checked={bp.mode === "custom" && bp.color.toUpperCase() === c.c}
                   aria-label={t(c.name)}
                   style={{ background: c.c }}
-                  onClick={() => update({ baseColorMode: "custom", baseColor: c.c })}
+                  onClick={() => setBase({ mode: "custom", color: c.c })}
                 />
               ))}
               <label className="st-swatch st-swatch--pick" aria-label={t("更多颜色")}>
-                <input type="color" value={s.baseColor} onChange={(e) => update({ baseColorMode: "custom", baseColor: e.target.value.toUpperCase() })} />
+                <input type="color" value={bp.color} onChange={(e) => setBase({ mode: "custom", color: e.target.value.toUpperCase() })} />
                 <span
                   style={{
                     background:
-                      s.baseColorMode === "custom" && !BASE_PRESETS.some((c) => c.c === s.baseColor.toUpperCase())
-                        ? s.baseColor
+                      bp.mode === "custom" && !BASE_PRESETS.some((c) => c.c === bp.color.toUpperCase())
+                        ? bp.color
                         : "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)",
                   }}
                 />

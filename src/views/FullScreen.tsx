@@ -22,7 +22,7 @@ import type { LyricLine } from "../lib/types";
 import { applyShortcuts, shortcutsOf } from "../lib/shortcuts";
 import { useBackgroundVideo } from "../lib/bgvideo";
 import { DEFAULT_BASE, deepTone } from "../lib/palette";
-import { lightOrderOf, lightPalette, loadBackgroundImage, lyricScale, thickScale, useApplySettings, useSettings } from "../lib/settings";
+import { baseOf, lightOrderOf, lightPalette, loadBackgroundImage, lyricScale, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
 import { trackKey } from "../lib/types";
@@ -286,16 +286,17 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const bg = settings.background;
   // 墨晕自带一整套配色：宣纸底、深色字，不用背景和颜色设置。只在歌词界面生效
   const ink = !vinyl && !library && settings.lightsOn && settings.lightStyle === "ink";
-  // 底色：默认深紫、跟随专辑（封面颜色压暗）、自己挑的颜色，或者透明（不加底色）。
-  // 专辑流体是几团光飘在底色上，必须有底色：背景是流体（或者图片、视频、封面还没有、临时显示流体）时，透明按默认算
+  // 底色：默认深紫、跟随专辑（封面颜色压暗）、自己挑的颜色，或者透明（不加底色）。每种背景各有一份。
+  // 图片、视频、封面还没有时临时显示的是专辑流体，这时用专辑流体的底色（流体必须有底色）
   const fluidShown = bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork);
-  const clear = settings.baseColorMode === "transparent" && !fluidShown && !ink;
+  const basePref = baseOf(settings, fluidShown ? "fluid" : bg);
+  const clear = basePref.mode === "transparent" && !ink;
   const base = clear
     ? "transparent"
-    : settings.baseColorMode === "album"
+    : basePref.mode === "album"
       ? deepTone(palette)
-      : settings.baseColorMode === "custom"
-        ? settings.baseColor
+      : basePref.mode === "custom"
+        ? basePref.color
         : DEFAULT_BASE;
   // 3D 模式：只在歌词界面、拾音灯开着时生效
   const d3 = settings.light3d && settings.lightsOn && !vinyl && !library;
