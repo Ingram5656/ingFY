@@ -115,7 +115,7 @@ function LiveSeekBar({ duration }: { duration: number }) {
   return <SeekBar position={position} duration={duration} onPreview={setPreview} onSeek={seek} />;
 }
 
-function LiveLyrics(p: { lines: LyricLine[]; offset: number; duration: number; showTranslation: boolean }) {
+function LiveLyrics(p: { lines: LyricLine[]; offset: number; duration: number; showTranslation: boolean; showRomaji: boolean }) {
   const { position, seek } = usePlayhead();
   const at = position + p.offset;
   const idx = findLineIndex(p.lines, at);
@@ -127,6 +127,7 @@ function LiveLyrics(p: { lines: LyricLine[]; offset: number; duration: number; s
       // 点歌词跳转时扣掉偏移，跳到的位置正好是这句开始
       onSeek={(t) => seek(Math.max(0, t - p.offset))}
       showTranslation={p.showTranslation}
+      showRomaji={p.showRomaji}
     />
   );
 }
@@ -576,7 +577,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
                   {lyrics.status === "ready" && !lyrics.synced && (
                     <div className="plain">{lines.map((l, i) => <p key={i}>{l.text}</p>)}</div>
                   )}
-                  {lyrics.status === "ready" && lyrics.synced && <LiveLyrics lines={lines} offset={offset} duration={now?.durationMs ?? 0} showTranslation={settings.showTranslation} />}
+                  {lyrics.status === "ready" && lyrics.synced && <LiveLyrics lines={lines} offset={offset} duration={now?.durationMs ?? 0} showTranslation={settings.showTranslation} showRomaji={settings.showRomaji} />}
                 </section>
               </>
             )}

@@ -112,14 +112,25 @@ export function dropCredits(lines: LyricLine[]): LyricLine[] {
   return lines.filter((l) => !CREDIT.test(l.text));
 }
 
-/** 把翻译按时间挂到对应的行上（找时间最接近、相差 1.5 秒以内的一句） */
-export function attachTranslation(lines: LyricLine[], translation: string): LyricLine[] {
-  const trans = parseLrc(translation).filter((t) => t.text && !/^\/\/\s*$/.test(t.text));
-  if (!trans.length) return lines;
+/** 把另一份按行的歌词（翻译、罗马音）按时间挂到对应的行上：找时间最接近、相差 1.5 秒以内的一句 */
+function attachBy(lines: LyricLine[], lrc: string, field: "trans" | "roma"): LyricLine[] {
+  const extra = parseLrc(lrc).filter((t) => t.text && !/^\/\/\s*$/.test(t.text));
+  if (!extra.length) return lines;
   let j = 0;
   return lines.map((l) => {
-    while (j + 1 < trans.length && Math.abs(trans[j + 1].time - l.time) <= Math.abs(trans[j].time - l.time)) j++;
-    const t = trans[j];
-    return t && Math.abs(t.time - l.time) <= 1500 && l.text ? { ...l, trans: t.text } : l;
+    while (j + 1 < extra.length && Math.abs(extra[j + 1].time - l.time) <= Math.abs(extra[j].time - l.time)) j++;
+    const t = extra[j];
+    // 罗马音和原文一模一样（英文句子）时不挂，免得同一句显示两遍
+    if (!t || Math.abs(t.time - l.time) > 1500 || !l.text) return l;
+    if (field === "roma" && t.text.replace(/\s+/g, "").toLowerCase() === l.text.replace(/\s+/g, "").toLowerCase()) return l;
+    return { ...l, [field]: t.text };
   });
+}
+
+export function attachTranslation(lines: LyricLine[], translation: string): LyricLine[] {
+  return attachBy(lines, translation, "trans");
+}
+
+export function attachRomaji(lines: LyricLine[], romaji: string): LyricLine[] {
+  return attachBy(lines, romaji, "roma");
 }

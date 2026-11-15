@@ -87,14 +87,22 @@ export default function DesktopLyrics() {
 
   let top = "";
   let bottom = "";
+  let topRoma = "";
+  let bottomRoma = "";
   let activeTop = true;
   if (lyrics.status === "ready" && lyrics.synced) {
     const cur = Math.max(idx, 0);
     const curText = idx >= 0 ? lines[cur].text || "♪" : lines[0]?.text ?? "";
     const nextText = idx >= 0 ? lines[cur + 1]?.text ?? "" : "";
+    // 罗马音：设置里打开、并且这句有才显示
+    const romaOf = (l?: { roma?: string }) => (settings.deskShowRomaji ? l?.roma ?? "" : "");
+    const curRoma = romaOf(idx >= 0 ? lines[cur] : lines[0]);
+    const nextRoma = idx >= 0 ? romaOf(lines[cur + 1]) : "";
     activeTop = cur % 2 === 0;
     top = activeTop ? curText : nextText;
     bottom = activeTop ? nextText : curText;
+    topRoma = activeTop ? curRoma : nextRoma;
+    bottomRoma = activeTop ? nextRoma : curRoma;
   } else if (now?.title) {
     top = now.title;
     bottom = now.artist;
@@ -136,11 +144,13 @@ export default function DesktopLyrics() {
             <span key={i} style={{ background: pickGradient(lightPalette(settings, palette), i, 9), animationDelay: `${(i * 0.31) % 1.2}s` }} />
           ))}
         </div>
-        <FitText className={`dl-line dl-line--top${activeTop ? " is-active" : ""}`} fitKey={top} minScale={0.55} wrap={false} data-tauri-drag-region>
+        <FitText className={`dl-line dl-line--top${activeTop ? " is-active" : ""}`} fitKey={`${top}\u001f${topRoma}`} minScale={0.55} wrap={false} data-tauri-drag-region>
           {lyrics.synced ? <Karaoke text={top} progress={karaokeTop && idx >= 0 ? progress : 0} /> : top}
+          {topRoma && <span className="dl-roma" data-tauri-drag-region>{topRoma}</span>}
         </FitText>
-        <FitText className={`dl-line dl-line--bottom${!activeTop ? " is-active" : ""}`} fitKey={bottom} minScale={0.55} wrap={false} data-tauri-drag-region>
+        <FitText className={`dl-line dl-line--bottom${!activeTop ? " is-active" : ""}`} fitKey={`${bottom}\u001f${bottomRoma}`} minScale={0.55} wrap={false} data-tauri-drag-region>
           {lyrics.synced ? <Karaoke text={bottom} progress={karaokeBottom && idx >= 0 ? progress : 0} /> : bottom}
+          {bottomRoma && <span className="dl-roma" data-tauri-drag-region>{bottomRoma}</span>}
         </FitText>
       </div>
     </div>

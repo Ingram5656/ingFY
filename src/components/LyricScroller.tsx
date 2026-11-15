@@ -14,11 +14,14 @@ interface Props {
   onSeek: (ms: number) => void;
   /** 有翻译时显示在每句下面 */
   showTranslation?: boolean;
+  /** 有罗马音时显示在原文下面、翻译上面 */
+  showRomaji?: boolean;
 }
 
 interface LineProps {
   text: string;
   trans?: string;
+  roma?: string;
   d: number;
   progress: number;
   setRef: (el: HTMLParagraphElement | null) => void;
@@ -30,7 +33,7 @@ interface LineProps {
  * 所以一行从"当前"变成"已唱"时，只是颜色、上浮、光晕这些数值在过渡，
  * DOM 结构不变，不会闪。
  */
-const Line = memo(function Line({ text, trans, d, progress, setRef, onPick }: LineProps) {
+const Line = memo(function Line({ text, trans, roma, d, progress, setRef, onPick }: LineProps) {
   const active = d === 0;
   const dist = Math.min(Math.abs(d), 4);
   const style = {
@@ -42,8 +45,8 @@ const Line = memo(function Line({ text, trans, d, progress, setRef, onPick }: Li
   return (
     <FitText
       ref={setRef}
-      fitKey={trans ? `${text}\u001f${trans}` : text}
-      className={`scroll-line${active ? " is-active" : ""}${trans ? " has-trans" : ""}`}
+      fitKey={`${text}\u001f${roma ?? ""}\u001f${trans ?? ""}`}
+      className={`scroll-line${active ? " is-active" : ""}${trans ? " has-trans" : ""}${roma ? " has-roma" : ""}`}
       style={style}
       role="button"
       tabIndex={0}
@@ -57,6 +60,7 @@ const Line = memo(function Line({ text, trans, d, progress, setRef, onPick }: Li
       }}
     >
       <Karaoke text={text} progress={progress} />
+      {roma && <span className="scroll-roma">{roma}</span>}
       {trans && <span className="scroll-trans">{trans}</span>}
     </FitText>
   );
@@ -70,7 +74,7 @@ const Line = memo(function Line({ text, trans, d, progress, setRef, onPick }: Li
  * - 鼠标滚轮可以上下翻看歌词；停手 3 秒后自动回到正在唱的那句。
  * - 点任意一句，歌曲跳到这句开始的位置。
  */
-export function LyricScroller({ lines, index, progress, onSeek, showTranslation = true }: Props) {
+export function LyricScroller({ lines, index, progress, onSeek, showTranslation = true, showRomaji = true }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const setters = useRef<((el: HTMLParagraphElement | null) => void)[]>([]);
@@ -95,7 +99,7 @@ export function LyricScroller({ lines, index, progress, onSeek, showTranslation 
     setOffset(anchor - (el.offsetTop + el.offsetHeight / 2));
   }, [focus]);
 
-  useLayoutEffect(measure, [measure, lines, showTranslation]);
+  useLayoutEffect(measure, [measure, lines, showTranslation, showRomaji]);
 
   // 字号、版面宽度变了（调字号、切换居中布局）时重新对齐当前句
   useEffect(() => {
@@ -153,6 +157,7 @@ export function LyricScroller({ lines, index, progress, onSeek, showTranslation 
             key={i}
             text={line.text || "♪"}
             trans={showTranslation ? line.trans : undefined}
+            roma={showRomaji ? line.roma : undefined}
             d={i - index}
             progress={i < index ? 1 : i > index ? 0 : progress}
             setRef={setterFor(i)}

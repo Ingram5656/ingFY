@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Artwork, LyricLine, LyricsResult, NowPlaying, Snapshot } from "./types";
 import { trackKey } from "./types";
-import { attachTranslation, dropCredits, parseLrc, parseYrc, plainToLines } from "./lrc";
+import { attachRomaji, attachTranslation, dropCredits, parseLrc, parseYrc, plainToLines } from "./lrc";
 import { extractPalette, FALLBACK_PALETTE } from "./palette";
 import { registerCache, useCacheEpoch } from "./cache";
 
@@ -68,7 +68,7 @@ export function livePosition(n: NowPlaying | null): number {
 
 export type LyricsState =
   | { status: "idle" | "loading" | "none" | "error"; lines: LyricLine[]; synced: false; source?: string; instrumental?: boolean }
-  | { status: "ready"; lines: LyricLine[]; synced: boolean; source: string; wordSync?: boolean; translated?: boolean };
+  | { status: "ready"; lines: LyricLine[]; synced: boolean; source: string; wordSync?: boolean; translated?: boolean; romanized?: boolean };
 
 const lyricsCache = new Map<string, LyricsState>();
 registerCache(() => lyricsCache.clear());
@@ -82,7 +82,7 @@ export function remember<K, V>(map: Map<K, V>, key: K, value: V, max: number) {
   while (map.size > max) map.delete(map.keys().next().value as K);
 }
 
-/** 把后端返回的歌词整理成行：逐字（YRC）优先，其次逐行 LRC，最后纯文本；去掉作词作曲信息、挂上翻译 */
+/** 把后端返回的歌词整理成行：逐字（YRC）优先，其次逐行 LRC，最后纯文本；去掉作词作曲信息、挂上翻译和罗马音 */
 function buildLyrics(r: LyricsResult | null): LyricsState {
   if (!r) return { status: "none", lines: [], synced: false };
   let lines: LyricLine[] = [];
@@ -99,7 +99,8 @@ function buildLyrics(r: LyricsResult | null): LyricsState {
   if (!synced && r.plain) lines = dropCredits(plainToLines(r.plain));
   if (!lines.length) return { status: "none", lines: [], synced: false, instrumental: r.instrumental };
   if (synced && r.translation) lines = attachTranslation(lines, r.translation);
-  return { status: "ready", lines, synced, source: r.source, wordSync, translated: lines.some((l) => !!l.trans) };
+  if (synced && r.romaji) lines = attachRomaji(lines, r.romaji);
+  return { status: "ready", lines, synced, source: r.source, wordSync, translated: lines.some((l) => !!l.trans), romanized: lines.some((l) => !!l.roma) };
 }
 
 /** 换歌时拉歌词，结果按歌曲缓存。choice 是用户手动选的歌词版本（"换一个歌词"） */

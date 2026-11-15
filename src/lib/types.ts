@@ -31,6 +31,8 @@ export interface LyricsResult {
   yrc: string | null;
   /** 翻译歌词（LRC） */
   translation: string | null;
+  /** 罗马音（LRC），只有网易云有；旧版后端没有这个字段 */
+  romaji?: string | null;
   instrumental: boolean;
   source: string;
 }
@@ -50,6 +52,8 @@ export interface LyricLine {
   words?: LyricWord[];
   /** 翻译 */
   trans?: string;
+  /** 罗马音 */
+  roma?: string;
 }
 
 export function trackKey(n: Pick<NowPlaying, "title" | "artist" | "album">): string {

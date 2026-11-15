@@ -9,6 +9,7 @@ import { CheckIcon } from "./Icons";
 import { COLOR_PRESETS, DEFAULT_BASE, deepTone, pickGradient } from "../lib/palette";
 import { deskScale, islandScale, lightPalette, lyricScale, thickScale } from "../lib/settings";
 import { Lights } from "./Lights";
+import { Karaoke } from "./Karaoke";
 import { VinylEditor } from "./Vinyl";
 import { t, tMsg, useLang } from "../lib/i18n";
 import { listen } from "@tauri-apps/api/event";
@@ -353,6 +354,68 @@ const LYRIC_PRESETS = [
   { c: "#FF8A80", name: "珊瑚红" },
   { c: "#C9A7FF", name: "淡紫" },
 ];
+
+/** 一排颜色预设 + 一个自选色。active 为 false 时一个都不选中（比如当前是"跟随专辑"） */
+function Swatches({ value, active, onPick, label }: { value: string; active: boolean; onPick: (c: string) => void; label: string }) {
+  const v = value.toUpperCase();
+  return (
+    <div className="st-swatches" role="radiogroup" aria-label={label}>
+      {LYRIC_PRESETS.map((c) => (
+        <button
+          key={c.c}
+          className="st-swatch"
+          role="radio"
+          aria-checked={active && v === c.c}
+          aria-label={t(c.name)}
+          style={{ background: c.c }}
+          onClick={() => onPick(c.c)}
+        />
+      ))}
+      <label className="st-swatch st-swatch--pick" aria-label={t("更多颜色")}>
+        <input type="color" value={value} onChange={(e) => onPick(e.target.value.toUpperCase())} />
+        {/* 自己挑的颜色不在预设里时显示该颜色，否则显示彩色色环 */}
+        <span style={{ background: active && !LYRIC_PRESETS.some((c) => c.c === v) ? value : "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" }} />
+      </label>
+    </div>
+  );
+}
+
+/**
+ * 桌面歌词预览：用桌面歌词同一套样式，摆在一张"桌面壁纸"上，
+ * 调透明度时能看到后面的东西透出来多少；按 820 宽画好再整体缩小。
+ */
+function DesktopPreview({ showRomaji }: { showRomaji: boolean }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.6);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setScale(el.clientWidth / 820));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div className="st-dlpv" ref={boxRef} role="img" aria-label={t("桌面歌词预览")}>
+      <div className="st-dlpv-wall" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
+      <div className="st-dlpv-stage" style={{ transform: `scale(${scale})` }}>
+        <div className="dl-bar glass">
+          <p className="dl-line dl-line--top is-active">
+            <Karaoke text="君の声が聞こえる" progress={0.55} />
+            {showRomaji && <span className="dl-roma">kimi no koe ga kikoeru</span>}
+          </p>
+          <p className="dl-line dl-line--bottom">
+            <Karaoke text="明日もきっと晴れる" progress={0} />
+            {showRomaji && <span className="dl-roma">ashita mo kitto hareru</span>}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** 底色预设：都是深色，白字放上去依然清楚 */
 const BASE_PRESETS = [
@@ -725,28 +788,92 @@ export function SettingsPanel(p: Props) {
           </div>
         </Group>
         <Group>
-          <Toggle label={t("显示翻译")} sub={t("外语歌有翻译时，在全屏歌词每句下面显示")} on={s.showTranslation} onChange={(v) => update({ showTranslation: v })} />
+          <Toggle label={t("显示翻译")} sub={t("外语歌有翻译时，在每句下面显示")} on={s.showTranslation} onChange={(v) => update({ showTranslation: v })} />
+          <Toggle label={t("显示罗马音")} sub={t("日语歌有罗马音时，在原文下面显示")} on={s.showRomaji} onChange={(v) => update({ showRomaji: v })} />
         </Group>
         <Group
-          title={t("字号")}
           foot={
-            s.lyricSize !== 50 || s.desktopLyricSize !== 50 ? (
-              <button className="st-link" onClick={() => update({ lyricSize: 50, desktopLyricSize: 50 })}>
+            s.lyricSize !== 50 ? (
+              <button className="st-link" onClick={() => update({ lyricSize: 50 })}>
                 {t("恢复默认字号")}
               </button>
             ) : undefined
           }
         >
           <div className="st-cell">
-            <Slider label={t("全屏歌词")} value={s.lyricSize} display={`${Math.round(lyricScale(s.lyricSize) * 100)}%`} onChange={(v) => update({ lyricSize: v })} />
+            <Slider label={t("字号")} value={s.lyricSize} display={`${Math.round(lyricScale(s.lyricSize) * 100)}%`} onChange={(v) => update({ lyricSize: v })} />
           </div>
-          <div className="st-cell">
-            <Slider
-              label={t("桌面歌词")}
-              value={s.desktopLyricSize}
-              display={`${Math.round(deskScale(s.desktopLyricSize) * 100)}%`}
-              onChange={(v) => update({ desktopLyricSize: v })}
+        </Group>
+      </>
+    ),
+    desktop: (
+      <>
+        {/* 预览钉在顶上，往下调颜色、透明度时一直看得到 */}
+        <div className="st-dlpv-pin">
+          <DesktopPreview showRomaji={s.deskShowRomaji} />
+        </div>
+        <Group title={t("唱到的字的颜色")}>
+          <button className="st-cell st-choice" role="radio" aria-checked={s.deskLyricColorMode === "same"} onClick={() => update({ deskLyricColorMode: "same" })}>
+            <span
+              className="st-dot"
+              style={{ background: s.lyricColorMode === "custom" ? s.lyricColor : `linear-gradient(135deg, ${p.palette[0]}, ${p.palette[p.palette.length - 1]})` }}
             />
+            <span className="st-option-text">
+              <span>{t("跟全屏歌词一样")}</span>
+            </span>
+            {s.deskLyricColorMode === "same" && <CheckIcon />}
+          </button>
+          <button className="st-cell st-choice" role="radio" aria-checked={s.deskLyricColorMode === "album"} onClick={() => update({ deskLyricColorMode: "album" })}>
+            <span className="st-dot" style={{ background: `linear-gradient(135deg, ${p.palette[0]}, ${p.palette[p.palette.length - 1]})` }} />
+            <span className="st-option-text">
+              <span>{t("跟随专辑")}</span>
+              <small>{t("换歌时自动换色")}</small>
+            </span>
+            {s.deskLyricColorMode === "album" && <CheckIcon />}
+          </button>
+          <div className="st-cell">
+            <span className="st-cell-label">{t("固定颜色")}</span>
+            <Swatches
+              label={t("固定颜色")}
+              value={s.deskLyricColor}
+              active={s.deskLyricColorMode === "custom"}
+              onPick={(c) => update({ deskLyricColorMode: "custom", deskLyricColor: c })}
+            />
+          </div>
+        </Group>
+        <Group title={t("没唱到的字的颜色")}>
+          <div className="st-cell">
+            <Swatches label={t("没唱到的字的颜色")} value={s.deskRestColor} active onPick={(c) => update({ deskRestColor: c })} />
+          </div>
+        </Group>
+        <Group
+          title={t("背景")}
+          foot={
+            s.deskBgTransparency !== 50 ? (
+              <button className="st-link" onClick={() => update({ deskBgTransparency: 50 })}>
+                {t("恢复默认")}
+              </button>
+            ) : undefined
+          }
+        >
+          <div className="st-cell">
+            <Slider label={t("背景透明度")} value={s.deskBgTransparency} display={`${Math.round(s.deskBgTransparency)}%`} onChange={(v) => update({ deskBgTransparency: v })} />
+          </div>
+        </Group>
+        <Group>
+          <Toggle label={t("显示罗马音")} sub={t("日语歌有罗马音时，在每行下面显示")} on={s.deskShowRomaji} onChange={(v) => update({ deskShowRomaji: v })} />
+        </Group>
+        <Group
+          foot={
+            s.desktopLyricSize !== 50 ? (
+              <button className="st-link" onClick={() => update({ desktopLyricSize: 50 })}>
+                {t("恢复默认字号")}
+              </button>
+            ) : undefined
+          }
+        >
+          <div className="st-cell">
+            <Slider label={t("字号")} value={s.desktopLyricSize} display={`${Math.round(deskScale(s.desktopLyricSize) * 100)}%`} onChange={(v) => update({ desktopLyricSize: v })} />
           </div>
         </Group>
       </>
@@ -1221,7 +1348,7 @@ function Toggle({ label, sub, on, onChange, disabled }: { label: string; sub?: s
   );
 }
 
-type PageId = "look" | "lyrics" | "lights" | "island" | "spotify" | "general";
+type PageId = "look" | "lyrics" | "desktop" | "lights" | "island" | "spotify" | "general";
 
 const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
   {
@@ -1237,11 +1364,22 @@ const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
   },
   {
     id: "lyrics",
-    label: "歌词",
+    label: "全屏歌词",
     color: "linear-gradient(135deg, #FF9F0A, #FF6B3D)",
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round">
         <path d="M5 7h14M5 12h10M5 17h12" />
+      </svg>
+    ),
+  },
+  {
+    id: "desktop",
+    label: "桌面歌词",
+    color: "linear-gradient(135deg, #FF6482, #FF2D55)",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4.5" width="18" height="12" rx="2.5" />
+        <path d="M9 20h6M12 16.5V20M7 9.5h7M10 12.5h7" />
       </svg>
     ),
   },

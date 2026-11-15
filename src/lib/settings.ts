@@ -44,12 +44,23 @@ export interface Settings {
   lyricColor: string;
   /** 有翻译时在歌词下面显示翻译 */
   showTranslation: boolean;
+  /** 有罗马音时在全屏歌词原文下面显示 */
+  showRomaji: boolean;
   /** 界面语言：跟随系统 / 中文 / English */
   language: LangSetting;
   /** 全屏歌词字号 0~100，50 是默认大小（实际缩放 0.7~1.3 倍） */
   lyricSize: number;
   /** 桌面歌词字号 0~100，50 是默认大小（实际缩放 0.8~1.2 倍） */
   desktopLyricSize: number;
+  /** 桌面歌词唱到的字的颜色：跟全屏歌词一样 / 跟随专辑 / 固定颜色 */
+  deskLyricColorMode: "same" | "album" | "custom";
+  deskLyricColor: string;
+  /** 桌面歌词没唱到的字的颜色 */
+  deskRestColor: string;
+  /** 桌面歌词背景透明度 0~100：0 是不透明的深色底，100 是完全透明，50 是原来的玻璃 */
+  deskBgTransparency: number;
+  /** 有罗马音时在桌面歌词每行下面显示 */
+  deskShowRomaji: boolean;
   /** 歌词界面：显示歌词 / 显示专辑封面和信息。两个都关时只剩拾音灯；拾音灯关着时这两项不能改，强制都显示 */
   showLyrics: boolean;
   showAlbum: boolean;
@@ -116,9 +127,15 @@ export const DEFAULT_SETTINGS: Settings = {
   lyricColorMode: "album",
   lyricColor: "#FFFFFF",
   showTranslation: true,
+  showRomaji: true,
   language: "system",
   lyricSize: 50,
   desktopLyricSize: 50,
+  deskLyricColorMode: "same",
+  deskLyricColor: "#FFFFFF",
+  deskRestColor: "#FFFFFF",
+  deskBgTransparency: 50,
+  deskShowRomaji: false,
   showLyrics: true,
   showAlbum: true,
   lightColorMode: "album",
@@ -253,10 +270,16 @@ export function useApplySettings(s: Settings) {
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--thick", String(thickScale(s.lightThickness ?? 50)));
-    root.style.setProperty(
-      "--lyric-sung",
-      s.lyricColorMode === "custom" ? s.lyricColor : "color-mix(in srgb, #fff 45%, var(--c0))",
-    );
+    const albumSung = "color-mix(in srgb, #fff 45%, var(--c0))";
+    const lyricSung = s.lyricColorMode === "custom" ? s.lyricColor : albumSung;
+    root.style.setProperty("--lyric-sung", lyricSung);
+    // 桌面歌词自己的颜色和背景
+    const deskMode = s.deskLyricColorMode ?? "same";
+    root.style.setProperty("--desk-sung", deskMode === "custom" ? s.deskLyricColor : deskMode === "album" ? albumSung : lyricSung);
+    root.style.setProperty("--desk-rest", s.deskRestColor ?? "#FFFFFF");
+    const [glass, solid] = deskBg(s.deskBgTransparency ?? 50);
+    root.style.setProperty("--dl-glass", glass.toFixed(3));
+    root.style.setProperty("--dl-solid", solid.toFixed(3));
     root.style.setProperty("--light-alpha", String(0.25 + (s.lightBrightness / 100) * 0.75));
     root.style.setProperty("--vivid", String(0.3 + (s.vividness / 100) * 1.4));
     root.style.setProperty("--bg-blur", `${(s.bgBlur / 100) * 60}px`);
@@ -285,6 +308,14 @@ export function lightOrderOf(order: readonly string[] | undefined): LightStyle[]
 }
 
 export const deskScale = (v: number) => 0.8 + (v / 100) * 0.4;
+/**
+ * 桌面歌词背景：透明度 0~100 换算成两层的浓度。
+ * 50 是原来的玻璃；往透明调，玻璃一起淡掉，100 时什么都没有；往不透明调，玻璃后面再垫一层越来越浓的深色。
+ */
+export function deskBg(transparency: number): [glass: number, solid: number] {
+  const a = 1 - Math.max(0, Math.min(100, transparency)) / 100;
+  return [Math.min(1, a * 2), Math.max(0, a * 2 - 1) * 0.85];
+}
 
 /** 拾音灯实际使用的颜色：取自专辑，或者用户定的起止色渐变 */
 export function lightPalette(s: Settings, album: string[]): string[] {

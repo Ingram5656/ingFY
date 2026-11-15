@@ -2,7 +2,7 @@
 //!
 //! 网易云没有公开的官方接口，这里用的是网页版自己调用的两个接口：
 //! - `/api/cloudsearch/pc`：搜歌，海外 IP 也返回明文结果
-//! - `/api/song/lyric/v1`：按歌曲 id 取歌词，含 lrc（逐行）、yrc（逐字）、tlyric（翻译）
+//! - `/api/song/lyric/v1`：按歌曲 id 取歌词，含 lrc（逐行）、yrc（逐字）、tlyric（翻译）、romalrc（罗马音）
 //! 接口如果哪天变了，这里失败会自动退回 LRCLIB，不影响使用。
 
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,8 @@ pub struct LyricsResult {
     pub yrc: Option<String>,
     /// 翻译歌词，LRC 格式
     pub translation: Option<String>,
+    /// 罗马音（日语歌常有），LRC 格式
+    pub romaji: Option<String>,
     pub instrumental: bool,
     pub source: String,
 }
@@ -180,6 +182,7 @@ impl From<LrcLibItem> for LyricsResult {
             plain: non_empty(i.plain_lyrics),
             yrc: None,
             translation: None,
+            romaji: None,
             instrumental: i.instrumental.unwrap_or(false),
             source: "LRCLIB".into(),
         }
@@ -355,6 +358,7 @@ mod netease {
         let lrc = get("lrc");
         let yrc = get("yrc").filter(|s| s.lines().any(|l| l.starts_with('[')));
         let translation = get("tlyric").filter(|s| has_time_tags(s));
+        let romaji = get("romalrc").filter(|s| has_time_tags(s));
         let instrumental = v.get("nolyric").and_then(|b| b.as_bool()).unwrap_or(false)
             || v.get("pureMusic").and_then(|b| b.as_bool()).unwrap_or(false);
 
@@ -368,6 +372,7 @@ mod netease {
             plain,
             yrc,
             translation,
+            romaji,
             instrumental,
             source: "网易云音乐".into(),
         };
