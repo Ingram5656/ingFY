@@ -6,7 +6,7 @@ import { lightOrderOf, downscaleImage, saveBackgroundImage } from "../lib/settin
 import type { LightStyle } from "./Lights";
 import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
-import { COLOR_PRESETS, pickGradient } from "../lib/palette";
+import { COLOR_PRESETS, DEFAULT_BASE, deepTone, pickGradient } from "../lib/palette";
 import { deskScale, islandScale, lightPalette, lyricScale, thickScale } from "../lib/settings";
 import { Lights } from "./Lights";
 import { VinylEditor } from "./Vinyl";
@@ -354,6 +354,16 @@ const LYRIC_PRESETS = [
   { c: "#C9A7FF", name: "淡紫" },
 ];
 
+/** 底色预设：都是深色，白字放上去依然清楚 */
+const BASE_PRESETS = [
+  { c: "#0E1A33", name: "午夜蓝" },
+  { c: "#0F2420", name: "墨绿" },
+  { c: "#2A0F18", name: "酒红" },
+  { c: "#2A1D14", name: "暖棕" },
+  { c: "#141414", name: "炭黑" },
+  { c: "#000000", name: "纯黑" },
+];
+
 const LIGHT_STYLES: { id: LightStyle; label: string }[] = [
   { id: "ink", label: "墨晕" },
   { id: "hist", label: "直方图" },
@@ -641,6 +651,51 @@ export function SettingsPanel(p: Props) {
             )}
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
             <input ref={videoRef} type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v" hidden onChange={pickVideo} />
+          </div>
+        </Group>
+        <Group title={t("底色")}>
+          <button className="st-cell st-choice" role="radio" aria-checked={s.baseColorMode === "default"} onClick={() => update({ baseColorMode: "default" })}>
+            <span className="st-dot" style={{ background: DEFAULT_BASE }} />
+            <span className="st-option-text">
+              <span>{t("默认")}</span>
+              <small>{t("ingfy 的深紫")}</small>
+            </span>
+            {s.baseColorMode === "default" && <CheckIcon />}
+          </button>
+          <button className="st-cell st-choice" role="radio" aria-checked={s.baseColorMode === "album"} onClick={() => update({ baseColorMode: "album" })}>
+            <span className="st-dot" style={{ background: deepTone(p.palette) }} />
+            <span className="st-option-text">
+              <span>{t("跟随专辑")}</span>
+              <small>{t("用封面的颜色压暗，换歌时自动换色")}</small>
+            </span>
+            {s.baseColorMode === "album" && <CheckIcon />}
+          </button>
+          <div className="st-cell">
+            <span className="st-cell-label">{t("固定颜色")}</span>
+            <div className="st-swatches" role="radiogroup" aria-label={t("底色")}>
+              {BASE_PRESETS.map((c) => (
+                <button
+                  key={c.c}
+                  className="st-swatch st-swatch--dark"
+                  role="radio"
+                  aria-checked={s.baseColorMode === "custom" && s.baseColor.toUpperCase() === c.c}
+                  aria-label={t(c.name)}
+                  style={{ background: c.c }}
+                  onClick={() => update({ baseColorMode: "custom", baseColor: c.c })}
+                />
+              ))}
+              <label className="st-swatch st-swatch--pick" aria-label={t("更多颜色")}>
+                <input type="color" value={s.baseColor} onChange={(e) => update({ baseColorMode: "custom", baseColor: e.target.value.toUpperCase() })} />
+                <span
+                  style={{
+                    background:
+                      s.baseColorMode === "custom" && !BASE_PRESETS.some((c) => c.c === s.baseColor.toUpperCase())
+                        ? s.baseColor
+                        : "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)",
+                  }}
+                />
+              </label>
+            </div>
           </div>
         </Group>
         <Group>

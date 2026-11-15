@@ -78,16 +78,17 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* ===== 全屏歌词 =====
    .fs 铺满窗口，只放背景；.fs-stage 固定按 1440×900 设计稿排版，
    再整体等比缩放到窗口大小，所以各部分比例和位置始终不变。 */
-.fs { position: relative; height: 100%; overflow: hidden; }
+.fs { position: relative; height: 100%; overflow: hidden; background-color: var(--base, #1a1238); transition: background-color 1.2s ease; }
 .fs-blob { position: absolute; border-radius: 50%; filter: blur(140px) saturate(var(--vivid, 1)); pointer-events: none; transition: background 1.2s ease; }
 /* 其他背景：纯色渐变、自定义图片、专辑封面放大 */
 .fs-bg { position: absolute; inset: 0; background-size: cover; background-position: center; pointer-events: none; }
-.fs-bg--gradient { background: linear-gradient(135deg, color-mix(in srgb, var(--c1) 55%, #120c2a), color-mix(in srgb, var(--c5) 60%, #120c2a));
+.fs-bg--gradient { background: linear-gradient(135deg, color-mix(in srgb, var(--c1) 55%, color-mix(in srgb, var(--base, #1a1238) 70%, #000)), color-mix(in srgb, var(--c5) 60%, color-mix(in srgb, var(--base, #1a1238) 70%, #000)));
   filter: saturate(var(--vivid, 1)); transition: background 1.2s ease; }
 .fs-bg--image { inset: calc(-1 * var(--bg-blur, 0px)); filter: blur(var(--bg-blur, 0px)); }
 .fs-bg--cover { inset: -80px; filter: blur(max(24px, var(--bg-blur, 0px))) saturate(var(--vivid, 1)); }
 /* 背景暗度：一层半透明黑 */
-.fs-dim { position: absolute; inset: 0; background: #0a0618; opacity: var(--bg-dim, 0.2); pointer-events: none; }
+/* 暗度层带一点底色的色调（默认底色下就是原来的深紫黑） */
+.fs-dim { position: absolute; inset: 0; background: color-mix(in srgb, var(--base, #1a1238) 40%, #000); opacity: var(--bg-dim, 0.2); pointer-events: none; transition: background-color 1.2s ease; }
 .fs-blob--a { width: 50vw; height: 50vw; left: -12vw; top: -20vw; background: var(--c1); opacity: 0.55; }
 .fs-blob--b { width: 52vw; height: 52vw; right: -14vw; top: 10vh; background: var(--c5); opacity: 0.45; }
 .fs-blob--c { width: 44vw; height: 44vw; left: 30vw; bottom: -30vw; background: var(--c3); opacity: 0.4; }
@@ -1170,3 +1171,4 @@ html[data-window="island"], html[data-window="island"] body { background: transp
   color: #fff; background: rgba(0,0,0,0.35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.4); }
 .st-card .st-tiles.st-tiles--bg { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
 .st-link:disabled { opacity: 0.45; cursor: default; }
+.st-swatch--dark { border-color: rgba(255,255,255,0.35); }

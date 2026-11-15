@@ -89,6 +89,23 @@ export async function extractPalette(dataUrl: string, k = 6): Promise<string[]> 
   return colors.length ? colors : FALLBACK_PALETTE;
 }
 
+/** 默认底色：ingfy 的深紫 */
+export const DEFAULT_BASE = "#1A1238";
+
+/**
+ * 跟随专辑的底色：从调色板里挑饱和度最高的颜色，压成很深的同色调，
+ * 当作背景底色，白字放在上面依然清楚。灰色封面得到的是近乎中性的深灰
+ */
+export function deepTone(palette: string[]): string {
+  if (!palette.length) return DEFAULT_BASE;
+  const toRgb = (h: string): RGB => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as RGB;
+  const best = palette
+    .map((c) => rgbToHsl(toRgb(c)))
+    .sort((a, b) => b[1] - a[1])[0];
+  const [h, s] = best;
+  return hslToHex([h, Math.min(0.6, s * 0.7), 0.11]);
+}
+
 /** 在调色板上按比例取色，让一排灯从左到右平滑过渡 */
 export function pickGradient(palette: string[], i: number, n: number): string {
   if (palette.length === 0) return "#FFFFFF";

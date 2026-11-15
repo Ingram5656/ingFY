@@ -12,6 +12,9 @@ export type BackgroundKind = "fluid" | "gradient" | "image" | "video" | "cover";
 
 export interface Settings {
   background: BackgroundKind;
+  /** 底色：色块之间、边角透出来的那层颜色，也决定暗度层和纯色渐变的色调 */
+  baseColorMode: "default" | "album" | "custom";
+  baseColor: string;
   /** 背景模糊 0~100 */
   bgBlur: number;
   /** 背景暗度 0~100 */
@@ -93,6 +96,8 @@ export type VinylLook = "classic" | "color" | "splatter" | "spots" | "split" | "
 
 export const DEFAULT_SETTINGS: Settings = {
   background: "fluid",
+  baseColorMode: "default",
+  baseColor: "#1A1238",
   bgBlur: 60,
   bgDim: 30,
   lightStyle: "wave",

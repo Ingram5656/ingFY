@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type CSSProperties } from "react";
 import { useCrossfade, useDragReorder, useIdle, useSegThumb } from "../lib/motion";
 import { LibraryView } from "../components/Shelf";
 import { NowListPanel } from "../components/NowList";
@@ -19,6 +19,7 @@ import { PlayheadProvider, usePlayhead, usePositionRef } from "../lib/playhead";
 import type { LyricLine } from "../lib/types";
 import { applyShortcuts, shortcutsOf } from "../lib/shortcuts";
 import { useBackgroundVideo } from "../lib/bgvideo";
+import { DEFAULT_BASE, deepTone } from "../lib/palette";
 import { lightOrderOf, lightPalette, loadBackgroundImage, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
@@ -264,11 +265,14 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const bg = settings.background;
   // 墨晕自带一整套配色：宣纸底、深色字，不用背景和颜色设置。只在歌词界面生效
   const ink = !vinyl && !library && settings.lightsOn && settings.lightStyle === "ink";
+  // 底色：默认深紫、跟随专辑（封面颜色压暗）或自己挑的颜色
+  const base =
+    settings.baseColorMode === "album" ? deepTone(palette) : settings.baseColorMode === "custom" ? settings.baseColor : DEFAULT_BASE;
   const showImage = bg === "image" && bgImage;
   const showCover = bg === "cover" && artwork;
 
   return (
-    <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}`}>
+    <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}`} style={{ "--base": base } as CSSProperties}>
       {/* 背景层：铺满整个窗口 */}
       {(bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork)) && (
         <>

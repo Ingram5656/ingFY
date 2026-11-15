@@ -439,4 +439,13 @@ export const EN: Record<string, string> = {
   "视频太大了，请选 400 MB 以内的": "That video is too large. Choose one under 400 MB.",
   "这个视频放不了，换一个 MP4 或 WebM 试试": "This video can't be played. Try an MP4 or WebM file.",
   "存不下这个视频，可能是磁盘空间不够": "Couldn't save this video. The disk may be full.",
+  "底色": "Base color",
+  "ingfy 的深紫": "ingfy deep purple",
+  "用封面的颜色压暗，换歌时自动换色": "A darkened tone from the cover, changes with each song",
+  "午夜蓝": "Midnight blue",
+  "墨绿": "Deep green",
+  "酒红": "Wine",
+  "暖棕": "Warm brown",
+  "炭黑": "Charcoal",
+  "纯黑": "Black",
 };
