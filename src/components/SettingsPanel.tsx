@@ -13,6 +13,7 @@ import { VinylEditor } from "./Vinyl";
 import { t, tMsg, useLang } from "../lib/i18n";
 import { listen } from "@tauri-apps/api/event";
 import { cacheSize, clearCaches, formatBytes } from "../lib/cache";
+import { deleteBackgroundVideo, saveBackgroundVideo, useVideoPoster } from "../lib/bgvideo";
 import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, accelCaps, accelFromEvent, heldModifiers, shortcutsOf, suspendShortcuts, useShortcutErrors, type ShortcutAction } from "../lib/shortcuts";
 
 interface Props {
@@ -455,7 +456,11 @@ export function SettingsPanel(p: Props) {
   const { settings: s, update } = p;
   const lightPal = lightPalette(s, p.palette);
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
   const [imgError, setImgError] = useState<string | null>(null);
+  const videoPoster = useVideoPoster();
+  const hasVideo = videoPoster !== null;
+  const [importing, setImporting] = useState(false);
   const [page, setPageRaw] = useState<PageId>(lastPage);
   const setPage = (id: PageId) => {
     lastPage = id;
@@ -479,6 +484,22 @@ export function SettingsPanel(p: Props) {
     }
   };
 
+  const pickVideo = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    setImgError(null);
+    try {
+      await saveBackgroundVideo(file);
+      update({ background: "video" });
+    } catch (err) {
+      setImgError(t(String((err as Error).message ?? err)));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const bgOptions: { id: BackgroundKind; label: string; style: CSSProperties }[] = [
     {
       id: "fluid",
@@ -498,6 +519,11 @@ export function SettingsPanel(p: Props) {
       style: p.bgImage ? { backgroundImage: `url(${p.bgImage})`, backgroundSize: "cover", backgroundPosition: "center" } : {},
     },
     {
+      id: "video",
+      label: hasVideo ? "我的视频" : "选择视频",
+      style: videoPoster ? { backgroundImage: `url(${videoPoster})`, backgroundSize: "cover", backgroundPosition: "center" } : {},
+    },
+    {
       id: "cover",
       label: "专辑封面放大",
       style: p.artworkUrl
@@ -509,6 +535,10 @@ export function SettingsPanel(p: Props) {
   const chooseBg = (id: BackgroundKind) => {
     if (id === "image" && !p.bgImage) {
       fileRef.current?.click();
+      return;
+    }
+    if (id === "video" && !hasVideo) {
+      if (!importing) videoRef.current?.click();
       return;
     }
     update({ background: id });
@@ -550,11 +580,17 @@ export function SettingsPanel(p: Props) {
       <>
         <Group title={t("样式")}>
           <div className="st-cell">
-            <div className="st-tiles" role="radiogroup" aria-label={t("背景")}>
+            <div className="st-tiles st-tiles--bg" role="radiogroup" aria-label={t("背景")}>
               {bgOptions.map((o) => (
                 <button key={o.id} className="st-tile" role="radio" aria-checked={s.background === o.id} onClick={() => chooseBg(o.id)}>
                   <span className="st-thumb" style={o.style}>
                     {o.id === "image" && !p.bgImage && <span className="st-upload">{t("点击选择")}</span>}
+                    {o.id === "video" && (!hasVideo || importing) && <span className="st-upload">{importing ? t("正在导入…") : t("点击选择")}</span>}
+                    {o.id === "video" && hasVideo && !importing && (
+                      <span className="st-play-badge" aria-hidden="true">
+                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1l7 4-7 4z" fill="currentColor" /></svg>
+                      </span>
+                    )}
                     {s.background === o.id && (
                       <span className="st-check">
                         <CheckIcon />
@@ -581,12 +617,30 @@ export function SettingsPanel(p: Props) {
                 </button>
               </div>
             )}
+            {hasVideo && (
+              <div className="st-row-btns">
+                <button className="st-link" disabled={importing} onClick={() => videoRef.current?.click()}>
+                  {t("换一个视频")}
+                </button>
+                <button
+                  className="st-link"
+                  disabled={importing}
+                  onClick={() => {
+                    void deleteBackgroundVideo();
+                    if (s.background === "video") update({ background: "fluid" });
+                  }}
+                >
+                  {t("删除视频")}
+                </button>
+              </div>
+            )}
             {imgError && (
               <p className="st-error" role="alert">
                 {imgError}
               </p>
             )}
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
+            <input ref={videoRef} type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v" hidden onChange={pickVideo} />
           </div>
         </Group>
         <Group>

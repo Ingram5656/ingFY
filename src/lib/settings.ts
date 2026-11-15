@@ -8,7 +8,7 @@ import { resolveLang, setLang, type LangSetting } from "./i18n";
 import { setLightResponse, setLightSensitivity } from "./audio";
 import { DEFAULT_SHORTCUTS, shortcutsOf, type ShortcutMap } from "./shortcuts";
 
-export type BackgroundKind = "fluid" | "gradient" | "image" | "cover";
+export type BackgroundKind = "fluid" | "gradient" | "image" | "video" | "cover";
 
 export interface Settings {
   background: BackgroundKind;

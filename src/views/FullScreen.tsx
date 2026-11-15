@@ -18,6 +18,7 @@ import { mediaControl, useAlbumPalette, useLyrics, usePlayer } from "../lib/play
 import { PlayheadProvider, usePlayhead, usePositionRef } from "../lib/playhead";
 import type { LyricLine } from "../lib/types";
 import { applyShortcuts, shortcutsOf } from "../lib/shortcuts";
+import { useBackgroundVideo } from "../lib/bgvideo";
 import { lightOrderOf, lightPalette, loadBackgroundImage, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
@@ -85,6 +86,25 @@ function useBackgroundImage() {
   return img;
 }
 
+/**
+ * 视频背景：静音循环铺满。窗口藏起来、最小化，或者被墨晕的宣纸盖住时暂停，不在后台白白解码
+ */
+function BackgroundVideo({ src, paused }: { src: string; paused: boolean }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const sync = () => {
+      if (paused || document.hidden) v.pause();
+      else void v.play().catch(() => {});
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, [paused, src]);
+  return <video ref={ref} className="fs-bg fs-bg--video" src={src} muted loop playsInline autoPlay disablePictureInPicture aria-hidden="true" />;
+}
+
 // ---- 跟着播放进度走的三块：各自订阅进度，每帧只重绘它们自己 ----
 
 function LiveSeekBar({ duration }: { duration: number }) {
@@ -143,6 +163,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const [settings, update] = useSettings();
   useApplySettings(settings);
   const bgImage = useBackgroundImage();
+  const bgVideo = useBackgroundVideo(settings.background === "video");
   const spotify = useSpotify(now);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [vinylMenuOpen, setVinylMenuOpen] = useState(false);
@@ -249,7 +270,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   return (
     <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}`}>
       {/* 背景层：铺满整个窗口 */}
-      {(bg === "fluid" || (bg === "image" && !bgImage) || (bg === "cover" && !artwork)) && (
+      {(bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork)) && (
         <>
           <div className="fs-blob fs-blob--a" />
           <div className="fs-blob fs-blob--b" />
@@ -258,6 +279,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
       )}
       {bg === "gradient" && <div className="fs-bg fs-bg--gradient" />}
       {showImage && <div className="fs-bg fs-bg--image" style={{ backgroundImage: `url(${bgImage})` }} />}
+      {bg === "video" && bgVideo && <BackgroundVideo src={bgVideo} paused={ink} />}
       {showCover && <div className="fs-bg fs-bg--cover" style={{ backgroundImage: `url(${artwork!.dataUrl})` }} />}
       <div className="fs-dim" />
       <div className="fs-paper" aria-hidden="true" />

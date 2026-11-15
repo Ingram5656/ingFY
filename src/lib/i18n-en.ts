@@ -431,4 +431,12 @@ export const EN: Record<string, string> = {
   "这个组合认不出来": "This combination isn't recognized",
   "和另一个快捷键重复了": "Same as another shortcut",
   "被别的程序占用了": "Used by another app",
+  "我的视频": "My video",
+  "选择视频": "Choose video",
+  "正在导入…": "Importing…",
+  "换一个视频": "Change video",
+  "删除视频": "Remove video",
+  "视频太大了，请选 400 MB 以内的": "That video is too large. Choose one under 400 MB.",
+  "这个视频放不了，换一个 MP4 或 WebM 试试": "This video can't be played. Try an MP4 or WebM file.",
+  "存不下这个视频，可能是磁盘空间不够": "Couldn't save this video. The disk may be full.",
 };
