@@ -746,46 +746,135 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 全局快捷键：在任何程序里都能用
-/// Ctrl+Alt+L 显示/隐藏桌面歌词，Ctrl+Alt+P 播放/暂停，Ctrl+Alt+←/→ 上一首/下一首，Ctrl+Alt+K 收藏
+// ---------- 全局快捷键：在任何程序里都能用，组合可以在设置里改 ----------
+
+use tauri_plugin_global_shortcut::Shortcut;
+
+/// 现在生效的快捷键：(动作, 组合)。动作有 desktop / play / previous / next / like
+static SHORTCUTS: Mutex<Vec<(String, Shortcut)>> = Mutex::new(Vec::new());
+/// 设置里正在录新的组合时先停用全部快捷键，免得按下去触发了旧动作
+static SHORTCUTS_SUSPENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 默认组合：Ctrl+Alt+L 桌面歌词，Ctrl+Alt+P 播放/暂停，Ctrl+Alt+←/→ 上一首/下一首，Ctrl+Alt+K 收藏
+const DEFAULT_SHORTCUTS: [(&str, &str); 5] = [
+    ("desktop", "Ctrl+Alt+KeyL"),
+    ("play", "Ctrl+Alt+KeyP"),
+    ("previous", "Ctrl+Alt+ArrowLeft"),
+    ("next", "Ctrl+Alt+ArrowRight"),
+    ("like", "Ctrl+Alt+KeyK"),
+];
+
+fn run_shortcut(app: &AppHandle, action: &str) {
+    match action {
+        "desktop" => toggle_desktop(app),
+        "play" => control_async("toggle"),
+        "previous" => {
+            let _ = app.emit("shortcut", "previous");
+            control_async("previous");
+        }
+        "next" => {
+            let _ = app.emit("shortcut", "next");
+            control_async("next");
+        }
+        // 收藏要用前端里的 Spotify 状态，交给主窗口处理
+        "like" => {
+            let _ = app.emit("shortcut", "like");
+        }
+        _ => {}
+    }
+}
+
+/// 一个快捷键改完的结果：error 为空表示已生效
+#[derive(serde::Serialize)]
+struct ShortcutResult {
+    action: String,
+    error: Option<String>,
+}
+
+/// 换一套快捷键：先注销旧的，再逐个注册新的。组合写法如 "Ctrl+Alt+KeyL"，空字符串表示不用这个快捷键。
+/// 某个组合被别的程序占用或写错时跳过它，其他照常生效，结果里告诉前端是哪个
+fn apply_shortcuts(app: &AppHandle, bindings: &[(String, String)]) -> Vec<ShortcutResult> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let gs = app.global_shortcut();
+    let mut current = SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner());
+    for (_, s) in current.drain(..) {
+        let _ = gs.unregister(s);
+    }
+    let suspended = SHORTCUTS_SUSPENDED.load(std::sync::atomic::Ordering::SeqCst);
+    let mut results = Vec::new();
+    for (action, accel) in bindings {
+        let accel = accel.trim();
+        if accel.is_empty() {
+            results.push(ShortcutResult { action: action.clone(), error: None });
+            continue;
+        }
+        let error = match accel.parse::<Shortcut>() {
+            Err(_) => Some("这个组合认不出来".to_string()),
+            Ok(s) if current.iter().any(|(_, c)| c == &s) => Some("和另一个快捷键重复了".to_string()),
+            Ok(s) => {
+                // 录制中只记下来，录完再一起注册
+                let r = if suspended { Ok(()) } else { gs.register(s.clone()) };
+                match r {
+                    Ok(()) => {
+                        current.push((action.clone(), s));
+                        None
+                    }
+                    Err(e) => {
+                        eprintln!("[shortcut] 注册 {accel} 失败：{e}");
+                        Some("被别的程序占用了".to_string())
+                    }
+                }
+            }
+        };
+        results.push(ShortcutResult { action: action.clone(), error });
+    }
+    results
+}
+
+/// 设置里改了快捷键
+#[tauri::command]
+fn set_shortcuts(app: AppHandle, bindings: Vec<(String, String)>) -> Vec<ShortcutResult> {
+    apply_shortcuts(&app, &bindings)
+}
+
+/// 设置里开始 / 结束录制新组合：录制期间所有快捷键暂时不响应
+#[tauri::command]
+fn suspend_shortcuts(app: AppHandle, suspended: bool) {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let was = SHORTCUTS_SUSPENDED.swap(suspended, std::sync::atomic::Ordering::SeqCst);
+    if was == suspended {
+        return;
+    }
+    let gs = app.global_shortcut();
+    let current = SHORTCUTS.lock().unwrap_or_else(|e| e.into_inner());
+    for (_, s) in current.iter() {
+        let _ = if suspended { gs.unregister(s.clone()) } else { gs.register(s.clone()) };
+    }
+}
+
 fn setup_shortcuts(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-    let m = Some(Modifiers::CONTROL | Modifiers::ALT);
-    let desk = Shortcut::new(m, Code::KeyL);
-    let play = Shortcut::new(m, Code::KeyP);
-    let prev = Shortcut::new(m, Code::ArrowLeft);
-    let next = Shortcut::new(m, Code::ArrowRight);
-    let like = Shortcut::new(m, Code::KeyK);
-    let all = [desk.clone(), play.clone(), prev.clone(), next.clone(), like.clone()];
+    use tauri_plugin_global_shortcut::ShortcutState;
     app.handle().plugin(
         tauri_plugin_global_shortcut::Builder::new()
-            .with_handler(move |app, shortcut, event| {
+            .with_handler(|app, shortcut, event| {
                 if !matches!(event.state(), ShortcutState::Pressed) {
                     return;
                 }
-                if shortcut == &desk {
-                    toggle_desktop(app);
-                } else if shortcut == &play {
-                    control_async("toggle");
-                } else if shortcut == &prev {
-                    let _ = app.emit("shortcut", "previous");
-                    control_async("previous");
-                } else if shortcut == &next {
-                    let _ = app.emit("shortcut", "next");
-                    control_async("next");
-                } else if shortcut == &like {
-                    // 收藏要用前端里的 Spotify 状态，交给主窗口处理
-                    let _ = app.emit("shortcut", "like");
+                let action = SHORTCUTS
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .iter()
+                    .find(|(_, s)| s == shortcut)
+                    .map(|(a, _)| a.clone());
+                if let Some(action) = action {
+                    run_shortcut(app, &action);
                 }
             })
             .build(),
     )?;
-    // 某个组合被别的程序占用时跳过它，其他照常注册
-    for s in all {
-        if let Err(e) = app.global_shortcut().register(s) {
-            eprintln!("[shortcut] 注册失败：{e}");
-        }
-    }
+    // 先用默认组合，主窗口打开后会按设置里存的再换一遍
+    let defaults: Vec<(String, String)> = DEFAULT_SHORTCUTS.iter().map(|(a, k)| (a.to_string(), k.to_string())).collect();
+    apply_shortcuts(app.handle(), &defaults);
     Ok(())
 }
 
@@ -997,6 +1086,8 @@ pub fn run() {
             island_set,
             island_layout,
             desktop_fit,
+            set_shortcuts,
+            suspend_shortcuts,
             set_light_response,
             cache_size,
             clear_cache,

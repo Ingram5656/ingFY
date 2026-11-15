@@ -1134,3 +1134,30 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 @media (prefers-reduced-motion: reduce) {
   .seg-group.is-reordering button[data-seg], .seg-group button[data-seg].is-lifted { transition-duration: 0.01s !important; }
 }
+
+/* ===== 快捷键：点按键帽录新组合 ===== */
+.st-key-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-key-problem { font-size: 12px; color: #ffb48a; }
+.st-kbd-btn { flex: none; display: inline-flex; align-items: center; min-height: 34px; padding: 4px 6px; border: 0; border-radius: 12px;
+  background: transparent; color: inherit; font: inherit; cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.3s var(--ease-apple), transform 0.18s var(--ease-apple); }
+.st-kbd-btn:hover { background: rgba(255,255,255,0.08); }
+.st-kbd-btn:active { transform: scale(0.96); }
+.st-kbd-btn:focus-visible { outline: 2px solid rgba(255,255,255,0.7); outline-offset: 2px; }
+.st-kbd-btn .st-kbds kbd { transition: transform 0.28s var(--ease-spring), opacity 0.2s ease; animation: kbd-in 0.32s var(--ease-spring) both; }
+@keyframes kbd-in { from { transform: scale(0.6); opacity: 0; } }
+.st-kbd-empty { padding: 0 6px; font-size: 13px; color: rgba(255,255,255,0.5); }
+.st-kbd-btn.is-empty .st-kbd-empty { color: rgba(255,255,255,0.4); }
+/* 录制中：一颗发亮的玻璃泡，边缘轻轻呼吸 */
+.st-kbd-btn.is-recording {
+  background: radial-gradient(120% 140% at 30% 0%, rgba(255,255,255,0.3), rgba(255,255,255,0.06) 70%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 0 0 1px rgba(255,255,255,0.35), 0 0 0 4px rgba(255,255,255,0.08);
+  animation: kbd-listen 1.6s ease-in-out infinite; }
+.st-kbd-btn.is-recording .st-kbd-empty { color: #fff; }
+@keyframes kbd-listen {
+  50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 0 0 1px rgba(255,255,255,0.55), 0 0 0 7px rgba(255,255,255,0.05); } }
+.st-cell.st-key.has-problem .st-kbd-btn:not(.is-recording) kbd { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 0 1px rgba(255,180,138,0.6); }
+@media (prefers-reduced-motion: reduce) {
+  .st-kbd-btn.is-recording { animation: none; }
+  .st-kbd-btn .st-kbds kbd { animation: none; }
+}

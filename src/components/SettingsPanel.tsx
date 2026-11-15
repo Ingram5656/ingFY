@@ -13,6 +13,7 @@ import { VinylEditor } from "./Vinyl";
 import { t, tMsg, useLang } from "../lib/i18n";
 import { listen } from "@tauri-apps/api/event";
 import { cacheSize, clearCaches, formatBytes } from "../lib/cache";
+import { DEFAULT_SHORTCUTS, SHORTCUT_ACTIONS, accelCaps, accelFromEvent, heldModifiers, shortcutsOf, suspendShortcuts, useShortcutErrors, type ShortcutAction } from "../lib/shortcuts";
 
 interface Props {
   settings: Settings;
@@ -38,12 +39,121 @@ export interface UpdateInfo {
   notes: string;
 }
 
-const SHORTCUTS: [string, string][] = [
-  ["Ctrl Alt L", t("显示 / 隐藏桌面歌词")],
-  ["Ctrl Alt P", t("播放 / 暂停")],
-  ["Ctrl Alt ← →", t("上一首 / 下一首")],
-  ["Ctrl Alt K", t("收藏当前歌曲")],
-];
+/**
+ * 快捷键：点右边的按键帽开始录新组合，按下去就换上；Esc 取消，⌫ / Delete 清空（不用这个快捷键）。
+ * 录制时所有全局快捷键先停用，免得按到旧组合触发了动作。
+ * 同一个组合只能给一个动作用：录到别的动作正在用的组合，就从那个动作上挪过来
+ */
+function ShortcutsGroup({ settings, update }: { settings: Settings; update: (patch: Partial<Settings>) => void }) {
+  const map = shortcutsOf(settings.shortcuts);
+  const errors = useShortcutErrors();
+  const [recording, setRecording] = useState<ShortcutAction | null>(null);
+  const [held, setHeld] = useState<string[]>([]);
+  const [hint, setHint] = useState<{ action: ShortcutAction; text: string } | null>(null);
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!recording) return;
+    suspendShortcuts(true);
+    setHeld([]);
+    const done = () => {
+      setRecording(null);
+      setHeld([]);
+    };
+    const onDown = (e: KeyboardEvent) => {
+      // 录制时的按键都归这里，别让面板的 Esc 关闭、方向键翻页之类的处理拿到
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) return done();
+      if ((e.code === "Backspace" || e.code === "Delete") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        update({ shortcuts: { ...map, [recording]: "" } });
+        setNote("");
+        return done();
+      }
+      const r = accelFromEvent(e);
+      if (r === "partial") return setHeld(heldModifiers(e));
+      if (r === "needs-mod") return setHint({ action: recording, text: t("要和 Ctrl、Alt 或 Win 一起按") });
+      if (!r) return;
+      const next = { ...map, [recording]: r.accel };
+      const taken = SHORTCUT_ACTIONS.find((a) => a.id !== recording && map[a.id] === r.accel);
+      if (taken) {
+        next[taken.id] = "";
+        setNote(t("这个组合原来给「{action}」用，已经挪过来了", { action: t(taken.label) }));
+      } else setNote("");
+      setHint(null);
+      update({ shortcuts: next });
+      done();
+    };
+    const onUp = (e: KeyboardEvent) => {
+      e.stopImmediatePropagation();
+      setHeld(heldModifiers(e));
+    };
+    // 点到别处、窗口失去焦点就算取消
+    const onBlur = () => done();
+    window.addEventListener("keydown", onDown, true);
+    window.addEventListener("keyup", onUp, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onDown, true);
+      window.removeEventListener("keyup", onUp, true);
+      window.removeEventListener("blur", onBlur);
+      suspendShortcuts(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording]);
+
+  const changed = SHORTCUT_ACTIONS.some((a) => map[a.id] !== DEFAULT_SHORTCUTS[a.id]);
+  return (
+    <Group
+      title={t("快捷键")}
+      foot={
+        note || changed ? (
+          <>
+            {note && <span>{note} </span>}
+            {changed && (
+              <button
+                className="st-link"
+                onClick={() => {
+                  setNote("");
+                  update({ shortcuts: { ...DEFAULT_SHORTCUTS } });
+                }}
+              >
+                {t("恢复默认")}
+              </button>
+            )}
+          </>
+        ) : undefined
+      }
+    >
+      {SHORTCUT_ACTIONS.map((a) => {
+        const rec = recording === a.id;
+        const caps = rec ? held : accelCaps(map[a.id]);
+        const problem = rec ? (hint?.action === a.id ? hint.text : "") : errors[a.id] ? t(errors[a.id]!) : "";
+        return (
+          <div className={`st-cell st-key${problem ? " has-problem" : ""}`} key={a.id}>
+            <span className="st-key-label">
+              {t(a.label)}
+              {problem && <small className="st-key-problem">{problem}</small>}
+            </span>
+            <button
+              className={`st-kbd-btn${rec ? " is-recording" : ""}${!map[a.id] && !rec ? " is-empty" : ""}`}
+              aria-label={rec ? t("按下新的组合键，Esc 取消，Delete 清空") : t("修改「{action}」的快捷键", { action: t(a.label) })}
+              aria-pressed={rec}
+              onClick={() => {
+                setHint(null);
+                setRecording(rec ? null : a.id);
+              }}
+            >
+              <span className="st-kbds">
+                {caps.length ? caps.map((x, i) => <kbd key={i}>{x}</kbd>) : <span className="st-kbd-empty">{rec ? t("按下新组合") : t("未设置")}</span>}
+              </span>
+            </button>
+          </div>
+        );
+      })}
+    </Group>
+  );
+}
 
 /** 通用：开机自启、快捷键、版本与更新 */
 function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | null; settings: Settings; update: (patch: Partial<Settings>) => void }) {
@@ -146,18 +256,7 @@ function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | 
           onChange={() => void toggleAutostart()}
         />
       </Group>
-      <Group title={t("快捷键")}>
-        {SHORTCUTS.map(([k, v]) => (
-          <div className="st-cell st-key" key={k}>
-            <span>{v}</span>
-            <span className="st-kbds">
-              {k.split(" ").map((x) => (
-                <kbd key={x}>{x}</kbd>
-              ))}
-            </span>
-          </div>
-        ))}
-      </Group>
+      <ShortcutsGroup settings={settings} update={update} />
       <Group title={t("存储")}>
         <div className="st-cell st-update">
           <span>{t("缓存")}</span>

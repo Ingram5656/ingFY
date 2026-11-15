@@ -6,6 +6,7 @@ import { mixPalette } from "./palette";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveLang, setLang, type LangSetting } from "./i18n";
 import { setLightResponse, setLightSensitivity } from "./audio";
+import { DEFAULT_SHORTCUTS, shortcutsOf, type ShortcutMap } from "./shortcuts";
 
 export type BackgroundKind = "fluid" | "gradient" | "image" | "cover";
 
@@ -18,6 +19,8 @@ export interface Settings {
   lightStyle: LightStyle;
   /** 灯效选项的排列顺序（顶栏里可以拖动排序，设置里也按这个顺序） */
   lightOrder: LightStyle[];
+  /** 全局快捷键，空字符串表示不用 */
+  shortcuts: ShortcutMap;
   /** 灯光亮度 0~100 */
   lightBrightness: number;
   /** 色彩鲜艳度 0~100，50 为原色 */
@@ -94,6 +97,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bgDim: 30,
   lightStyle: "wave",
   lightOrder: ["ink", "hist", "ring", "wave"],
+  shortcuts: DEFAULT_SHORTCUTS,
   lightBrightness: 80,
   vividness: 50,
   beat: true,
@@ -143,6 +147,8 @@ function load(): Settings {
     // 2.0.1 去掉了"灯管"：之前选灯管的换成最接近的声波
     if ((merged.lightStyle as string) === "tube") merged.lightStyle = "wave";
     if ((merged.islandLightStyle as string) === "tube") merged.islandLightStyle = "wave";
+    // 以后新增的动作也要有默认组合
+    merged.shortcuts = shortcutsOf(merged.shortcuts);
     return merged;
   } catch {
     return DEFAULT_SETTINGS;

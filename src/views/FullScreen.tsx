@@ -17,6 +17,7 @@ import { findLineIndex, lineProgress } from "../lib/lrc";
 import { mediaControl, useAlbumPalette, useLyrics, usePlayer } from "../lib/player";
 import { PlayheadProvider, usePlayhead, usePositionRef } from "../lib/playhead";
 import type { LyricLine } from "../lib/types";
+import { applyShortcuts, shortcutsOf } from "../lib/shortcuts";
 import { lightOrderOf, lightPalette, loadBackgroundImage, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
@@ -179,6 +180,11 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   useEffect(() => {
     invoke("island_set", { visible: settings.islandOn, locked: settings.islandLocked }).catch(() => {});
   }, [settings.islandOn, settings.islandLocked]);
+  // 全局快捷键按设置里存的组合注册（后端启动时先用默认组合）
+  const shortcutKey = JSON.stringify(settings.shortcuts);
+  useEffect(() => {
+    void applyShortcuts(shortcutsOf(settings.shortcuts));
+  }, [shortcutKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // 托盘里点了"显示 / 隐藏灵动岛"
   const settingsRef = useRef(settings);
   settingsRef.current = settings;

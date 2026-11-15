@@ -422,4 +422,13 @@ export const EN: Record<string, string> = {
   "已清理": "Cleared",
   "墨晕": "Ink",
   "拖动可以调整顺序": "Drag to reorder",
+  "要和 Ctrl、Alt 或 Win 一起按": "Hold Ctrl, Alt or Win with it",
+  "这个组合原来给「{action}」用，已经挪过来了": "This combination was used by “{action}”, so it has been moved here.",
+  "按下新的组合键，Esc 取消，Delete 清空": "Press a new key combination. Esc cancels, Delete clears.",
+  "修改「{action}」的快捷键": "Change the shortcut for “{action}”",
+  "按下新组合": "Press keys",
+  "未设置": "Not set",
+  "这个组合认不出来": "This combination isn't recognized",
+  "和另一个快捷键重复了": "Same as another shortcut",
+  "被别的程序占用了": "Used by another app",
 };
