@@ -31,34 +31,31 @@ export default function DesktopLyrics() {
   useApplySettings(settings);
   const spotify = useSpotify(now);
   const glowRef = useRef<HTMLDivElement>(null);
-  const barRef = useRef<HTMLDivElement>(null);
+  const dlRef = useRef<HTMLDivElement>(null);
 
-  // 窗口高度跟着歌词条走：字调大后歌词条变高，窗口往上长，上面的控制栏才不会被切掉
+  // 窗口高度跟着内容走：字调大后歌词条变高，窗口往上长（底边不动），控制栏和歌词都完整显示。
+  // 窗口没能变高时（还没调过来、手动拉矮了），把整块按比例缩小装进窗口，不切掉任何一边
   useEffect(() => {
-    const bar = barRef.current;
-    if (!bar) return;
-    let last = 0;
+    const dl = dlRef.current;
+    if (!dl) return;
+    let asked = 0;
     const fit = () => {
-      // 上内边距 6 + 控制栏 46（锁定时隐藏，也照样留着，免得锁定 / 解锁时窗口跳动）+ 间距 8 + 歌词条 + 下内边距 12
-      const need = Math.ceil(6 + 46 + 8 + bar.offsetHeight + 12);
-      if (Math.abs(need - last) < 2) return;
-      last = need;
-      invoke("desktop_fit", { height: need }).catch(() => {});
+      // 内容自己的高度；transform 缩放不影响它
+      const need = Math.ceil(dl.offsetHeight) + 2;
+      const fitScale = Math.min(1, window.innerHeight / need);
+      dl.style.setProperty("--dl-fit", fitScale.toFixed(4));
+      if (Math.abs(need - asked) >= 2 || Math.abs(window.innerHeight - need) > 1) {
+        asked = need;
+        invoke("desktop_fit", { height: need }).catch(() => {});
+      }
     };
     fit();
     const ro = new ResizeObserver(fit);
-    ro.observe(bar);
-    // 手动把窗口拉矮了也拉回来（高度对了后端就不再动它）
-    const onResize = () => {
-      if (Math.abs(window.innerHeight - last) > 1) {
-        last = 0;
-        fit();
-      }
-    };
-    window.addEventListener("resize", onResize);
+    ro.observe(dl);
+    window.addEventListener("resize", fit);
     return () => {
       ro.disconnect();
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", fit);
     };
   }, []);
 
@@ -110,7 +107,7 @@ export default function DesktopLyrics() {
   const karaokeBottom = !activeTop && lyrics.synced;
 
   return (
-    <div className={`dl${desktopLocked ? " is-locked" : ""}`}>
+    <div className={`dl${desktopLocked ? " is-locked" : ""}`} ref={dlRef}>
       <div className="dl-toolbar glass">
         <button className="ibtn" aria-label={t("上一首")} onClick={() => mediaControl("previous")}><PrevIcon size={18} /></button>
         <button className="ibtn" aria-label={now?.playing ? t("暂停") : t("播放")} onClick={() => mediaControl("toggle")}>
@@ -133,7 +130,7 @@ export default function DesktopLyrics() {
         </button>
       </div>
 
-      <div className="dl-bar glass" data-tauri-drag-region ref={barRef}>
+      <div className="dl-bar glass" data-tauri-drag-region>
         <div className={`dl-glow${settings.lightsOn ? "" : " is-hidden"}`} aria-hidden="true" ref={glowRef}>
           {Array.from({ length: 9 }, (_, i) => (
             <span key={i} style={{ background: pickGradient(lightPalette(settings, palette), i, 9), animationDelay: `${(i * 0.31) % 1.2}s` }} />
