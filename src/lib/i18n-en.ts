@@ -32,7 +32,6 @@ export const EN: Record<string, string> = {
   "打开拾音灯": "Turn on lights",
   "拾音灯效果": "Light style",
   "拾音灯": "Lights",
-  "灯管": "Tubes",
   "直方图": "Bars",
   "圆环": "Ring",
   "声波": "Wave",
@@ -421,4 +420,5 @@ export const EN: Record<string, string> = {
   "清理": "Clear",
   "正在清理…": "Clearing…",
   "已清理": "Cleared",
+  "墨晕": "Ink",
 };

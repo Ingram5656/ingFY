@@ -255,7 +255,7 @@ const LYRIC_PRESETS = [
 ];
 
 const LIGHT_STYLES: { id: LightStyle; label: string }[] = [
-  { id: "tube", label: "灯管" },
+  { id: "ink", label: "墨晕" },
   { id: "hist", label: "直方图" },
   { id: "ring", label: "圆环" },
   { id: "wave", label: "声波" },
@@ -297,7 +297,7 @@ function LightPreview({ style, palette, thickness, beat }: { style: LightStyle; 
     return () => ro.disconnect();
   }, []);
   return (
-    <div className="st-lpv" ref={boxRef} aria-label={t("拾音灯预览")} role="img">
+    <div className={`st-lpv${style === "ink" ? " is-ink" : ""}`} ref={boxRef} aria-label={t("拾音灯预览")} role="img">
       <div className="st-lpv-stage" style={{ transform: `scale(${scale})` }}>
         <Lights palette={palette} style={style} playing reactive={beat} thickness={thickness} demo />
       </div>
@@ -308,6 +308,16 @@ function LightPreview({ style, palette, thickness, beat }: { style: LightStyle; 
 
 /** 灯效缩略图：用当前专辑色画一个小样 */
 function LightThumb({ id, palette }: { id: LightStyle; palette: string[] }) {
+  // 墨晕的配色是固定的，缩略图也不跟专辑色
+  if (id === "ink") {
+    return (
+      <span className="thumb-ink">
+        <i />
+        <i />
+        <i />
+      </span>
+    );
+  }
   if (id === "ring") {
     return (
       <span className="thumb-ring">
@@ -324,7 +334,7 @@ function LightThumb({ id, palette }: { id: LightStyle; palette: string[] }) {
       </span>
     );
   }
-  const n = id === "tube" ? 5 : id === "hist" ? 9 : 12;
+  const n = id === "hist" ? 9 : 12;
   return (
     <span className={`thumb-bars thumb-bars--${id}`}>
       {Array.from({ length: n }, (_, i) => {
@@ -568,6 +578,8 @@ export function SettingsPanel(p: Props) {
             <Slider label={t("反应速度")} value={s.lightResponse} display={levelWord(s.lightResponse)} onChange={(v) => update({ lightResponse: v })} />
           </div>
         </Group>
+        {/* 墨晕的颜色是固定的，亮度、鲜艳度和配色都不起作用 */}
+        <div className={s.lightStyle === "ink" ? "st-locked" : undefined} aria-disabled={s.lightStyle === "ink" || undefined}>
         <Group>
           <div className="st-cell">
             <Slider label={t("亮度")} value={s.lightBrightness} display={`${s.lightBrightness}`} onChange={(v) => update({ lightBrightness: v })} />
@@ -625,6 +637,7 @@ export function SettingsPanel(p: Props) {
             </>
           )}
         </Group>
+        </div>
       </>
     ),
     spotify: (

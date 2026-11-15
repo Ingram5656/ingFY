@@ -30,7 +30,7 @@ import type { UpdateInfo } from "../components/SettingsPanel";
 import { t, tMsg, useLang } from "../lib/i18n";
 
 const STYLES: { id: LightStyle; label: string }[] = [
-  { id: "tube", label: "灯管" },
+  { id: "ink", label: "墨晕" },
   { id: "hist", label: "直方图" },
   { id: "ring", label: "圆环" },
   { id: "wave", label: "声波" },
@@ -237,11 +237,13 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   useSegThumb(modeSegRef, `${viewMode}|${idle}|${libraryAvailable}`);
   useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}`);
   const bg = settings.background;
+  // 墨晕自带一整套配色：宣纸底、深色字，不用背景和颜色设置。只在歌词界面生效
+  const ink = !vinyl && !library && settings.lightsOn && settings.lightStyle === "ink";
   const showImage = bg === "image" && bgImage;
   const showCover = bg === "cover" && artwork;
 
   return (
-    <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}`}>
+    <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}`}>
       {/* 背景层：铺满整个窗口 */}
       {(bg === "fluid" || (bg === "image" && !bgImage) || (bg === "cover" && !artwork)) && (
         <>
@@ -254,6 +256,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
       {showImage && <div className="fs-bg fs-bg--image" style={{ backgroundImage: `url(${bgImage})` }} />}
       {showCover && <div className="fs-bg fs-bg--cover" style={{ backgroundImage: `url(${artwork!.dataUrl})` }} />}
       <div className="fs-dim" />
+      <div className="fs-paper" aria-hidden="true" />
 
       <div className="fs-stage" style={{ transform: `scale(${scale})` }}>
         <header className="fs-top">

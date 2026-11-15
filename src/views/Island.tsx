@@ -194,7 +194,7 @@ export default function Island() {
 
   return (
     <div
-      className={`isl-root${docked ? " is-docked" : ""}${open ? " is-open" : ""}${locked ? " is-locked" : ""}${ghost ? " is-ghost" : ""}`}
+      className={`isl-root${settings.islandLightsOn && settings.islandLightStyle === "ink" ? " is-ink" : ""}${docked ? " is-docked" : ""}${open ? " is-open" : ""}${locked ? " is-locked" : ""}${ghost ? " is-ghost" : ""}`}
       style={{ "--s": scale, "--isl-sung": sung } as CSSProperties}
     >
       <div className="isl" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerEnter={onEnter} onPointerLeave={onLeave}>

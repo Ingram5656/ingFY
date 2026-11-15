@@ -90,7 +90,7 @@ export const DEFAULT_SETTINGS: Settings = {
   background: "fluid",
   bgBlur: 60,
   bgDim: 30,
-  lightStyle: "tube",
+  lightStyle: "wave",
   lightBrightness: 80,
   vividness: 50,
   beat: true,
@@ -136,7 +136,11 @@ function load(): Settings {
     const saved = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
     // 兼容 0.1.0：当时灯效单独存在 lightStyle 里
     const legacy = localStorage.getItem("lightStyle") as LightStyle | null;
-    return { ...DEFAULT_SETTINGS, ...(legacy ? { lightStyle: legacy } : {}), ...saved };
+    const merged = { ...DEFAULT_SETTINGS, ...(legacy ? { lightStyle: legacy } : {}), ...saved };
+    // 2.0.1 去掉了"灯管"：之前选灯管的换成最接近的声波
+    if ((merged.lightStyle as string) === "tube") merged.lightStyle = "wave";
+    if ((merged.islandLightStyle as string) === "tube") merged.islandLightStyle = "wave";
+    return merged;
   } catch {
     return DEFAULT_SETTINGS;
   }
