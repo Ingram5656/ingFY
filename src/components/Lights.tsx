@@ -154,8 +154,8 @@ function BarLights({ palette, style, playing, reactive, thickness = 1, demo = fa
 
 /** 墨晕的配色是固定的：宣纸底上的灰黑墨，不跟专辑色和任何颜色设置走 */
 const INK = ["#1b1d1c", "#2f3a36", "#47524c"];
-/** 画布按容器的这个比例画，再拉伸铺满。墨本来就是虚的，省一半以上的像素 */
-const INK_RES = 0.5;
+/** 画布按容器的这个比例画，再拉伸铺满。墨本来就是虚的，不用满分辨率；太低毛边会糊掉 */
+const INK_RES = 0.75;
 
 interface Drop {
   born: number;
@@ -180,55 +180,103 @@ function hexA(hex: string, a: number): string {
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${Math.max(0, Math.min(1, a))})`;
 }
 
-/** 不规则的墨团轮廓 */
-function blobPath(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, seed: number, rough: number) {
+/** 不规则的墨团轮廓：几段随机相位的起伏叠在一起，每滴墨形状都不一样 */
+function inkPath(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, seed: number, rough: number) {
+  const ph = [1, 2, 3, 4, 5, 6].map((k) => rnd(seed * 7.7 + k) * Math.PI * 2);
   g.beginPath();
-  for (let i = 0; i <= 96; i++) {
-    const a = (i / 96) * Math.PI * 2;
+  for (let i = 0; i <= 120; i++) {
+    const a = (i / 120) * Math.PI * 2;
     let n = 0;
-    for (let o = 1; o <= 4; o++) n += Math.sin(a * (o * 2 + 1) + seed * o * 3.1) * (rough / o);
+    for (let k = 2; k <= 7; k++) n += Math.sin(a * k + ph[k - 2]) * (rough / (k * 0.7));
     const rr = r * (1 + n);
     const x = cx + Math.cos(a) * rr;
-    const y = cy + Math.sin(a) * rr * 0.82;
+    const y = cy + Math.sin(a) * rr * 0.86;
     if (i) g.lineTo(x, y);
     else g.moveTo(x, y);
   }
   g.closePath();
 }
 
-/** 把一滴墨长到最大时的样子画进一张小画布：一层层渗开的墨、边上一圈深一点的墨线、溅出去的小墨点 */
+/** 从中心往外变淡的填充：墨团没有清楚的边 */
+function inkFill(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, col: string, a: number, inner = 0.5) {
+  const gr = g.createRadialGradient(cx, cy, 0, cx, cy, r * 1.1);
+  gr.addColorStop(0, hexA(col, a));
+  gr.addColorStop(inner, hexA(col, a * 0.85));
+  gr.addColorStop(1, hexA(col, a * 0.15));
+  g.fillStyle = gr;
+}
+
+/**
+ * 把一滴墨长到最大时的样子画进一张小画布。不描边：
+ * 最外面一圈很淡的水晕，边上是往宣纸里渗出去的细毛边，墨身是几层边缘渐变的墨团，里面浓淡不匀，中间一点墨心
+ */
 function makeSprite(r0: number, seed: number): { sprite: HTMLCanvasElement; half: number } {
   const rMax = r0 * 1.4;
-  const half = Math.ceil(rMax * 1.8);
+  const half = Math.ceil(rMax * 1.9);
   const c = document.createElement("canvas");
   c.width = c.height = half * 2;
   const g = c.getContext("2d")!;
   const col = INK[Math.floor(rnd(seed * 9.1) * INK.length)];
-  const blur = Math.max(1, 6 * INK_RES * (r0 / 75));
-  g.filter = `blur(${blur.toFixed(1)}px)`;
+  const blur = (k: number, min = 0.6) => `blur(${Math.max(min, rMax * k).toFixed(1)}px)`;
+  const at = (a: number, d: number): [number, number] => [half + Math.cos(a) * d, half + Math.sin(a) * d * 0.86];
+
+  // 水晕：墨里的水先渗出去的那一圈
+  g.filter = blur(0.16);
+  g.fillStyle = hexA(col, 0.07);
+  inkPath(g, half, half, rMax * 1.18, seed + 3, 0.2);
+  g.fill();
+
+  // 毛边：贴着墨团边缘往外渗的细丝，很淡，连起来也看不出是一条线
+  g.filter = blur(0.012);
+  g.lineCap = "round";
+  for (let j = 0; j < 90; j++) {
+    const a = rnd(seed * 23 + j) * Math.PI * 2;
+    const r1 = rMax * (0.8 + 0.14 * rnd(seed * 29 + j));
+    const len = rMax * (0.06 + 0.17 * rnd(seed * 31 + j));
+    const bend = (rnd(seed * 41 + j) - 0.5) * 0.25;
+    g.strokeStyle = hexA(col, 0.06 + 0.06 * rnd(seed * 43 + j));
+    g.lineWidth = Math.max(0.6, rMax * 0.012 * (0.5 + rnd(seed * 37 + j)));
+    g.beginPath();
+    g.moveTo(...at(a, r1));
+    g.lineTo(...at(a + bend, r1 + len));
+    g.stroke();
+  }
+
+  // 墨身：三层错开的墨团，越往里越浓
+  g.filter = blur(0.04);
   for (const [s, a] of [
-    [1.0, 0.08],
-    [0.82, 0.1],
-    [0.62, 0.14],
-    [0.4, 0.2],
-    [0.2, 0.26],
+    [0.95, 0.2],
+    [0.72, 0.22],
+    [0.5, 0.27],
   ]) {
-    g.fillStyle = hexA(col, a * 1.4);
-    blobPath(g, half, half, rMax * s, seed + s * 10, 0.13 + 0.1 * (1 - s));
+    const ox = (rnd(seed * 3 + s) - 0.5) * rMax * 0.18;
+    const oy = (rnd(seed * 5 + s) - 0.5) * rMax * 0.14;
+    inkFill(g, half + ox, half + oy, rMax * s, col, a);
+    inkPath(g, half + ox, half + oy, rMax * s, seed + s * 10, 0.2);
     g.fill();
   }
-  g.filter = `blur(${Math.max(0.5, blur / 4).toFixed(1)}px)`;
-  g.strokeStyle = hexA(col, 0.22 * 1.5);
-  g.lineWidth = Math.max(1, rMax / 70);
-  blobPath(g, half, half, rMax, seed + 10, 0.15);
-  g.stroke();
-  for (let j = 0; j < 7; j++) {
-    const a = rnd(seed * 13 + j) * Math.PI * 2;
-    const d = rMax * (1.05 + 0.6 * rnd(seed * 17 + j));
-    const r = r0 * 0.05 * (0.4 + rnd(seed * 19 + j)) * 1.3;
-    g.fillStyle = hexA(col, 0.35);
+
+  // 斑驳：墨身里几小团浓淡不一的墨
+  g.filter = blur(0.05);
+  for (let j = 0; j < 6; j++) {
+    const [x, y] = at(rnd(seed * 51 + j) * Math.PI * 2, rMax * 0.55 * rnd(seed * 53 + j));
+    g.fillStyle = hexA(col, 0.07 + 0.12 * rnd(seed * 59 + j));
+    inkPath(g, x, y, rMax * (0.12 + 0.16 * rnd(seed * 57 + j)), seed * 3 + j, 0.22);
+    g.fill();
+  }
+
+  // 墨心
+  inkFill(g, half, half, rMax * 0.24, col, 0.4, 0.3);
+  inkPath(g, half, half, rMax * 0.22, seed + 20, 0.22);
+  g.fill();
+
+  // 落下时溅出的几个小墨点：少而虚
+  g.filter = blur(0.015, 0.8);
+  for (let j = 0; j < 3; j++) {
+    const [x, y] = at(rnd(seed * 13 + j) * Math.PI * 2, rMax * (1.05 + 0.35 * rnd(seed * 17 + j)));
+    g.fillStyle = hexA(col, 0.28);
     g.beginPath();
-    g.arc(half + Math.cos(a) * d, half + Math.sin(a) * d * 0.82, r, 0, Math.PI * 2);
+    g.arc(x, y, r0 * 0.04 * (0.5 + rnd(seed * 19 + j)), 0, Math.PI * 2);
     g.fill();
   }
   return { sprite: c, half };
