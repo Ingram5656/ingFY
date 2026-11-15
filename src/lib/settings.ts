@@ -152,7 +152,7 @@ function load(): Settings {
     // 兼容 0.1.0：当时灯效单独存在 lightStyle 里
     const legacy = localStorage.getItem("lightStyle") as LightStyle | null;
     const merged = { ...DEFAULT_SETTINGS, ...(legacy ? { lightStyle: legacy } : {}), ...saved };
-    // 2.0.1 去掉了"灯管"：之前选灯管的换成最接近的声波
+    // 2.1.0 去掉了"灯管"：之前选灯管的换成最接近的声波
     if ((merged.lightStyle as string) === "tube") merged.lightStyle = "wave";
     if ((merged.islandLightStyle as string) === "tube") merged.islandLightStyle = "wave";
     // 以后新增的动作也要有默认组合

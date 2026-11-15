@@ -1,6 +1,6 @@
 [package]
 name = "ingfy"
-version = "2.0.1"
+version = "2.1.0"
 description = "ingfy：液态玻璃动态歌词"
 edition = "2021"
 
