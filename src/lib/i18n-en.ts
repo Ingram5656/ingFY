@@ -421,4 +421,5 @@ export const EN: Record<string, string> = {
   "正在清理…": "Clearing…",
   "已清理": "Cleared",
   "墨晕": "Ink",
+  "拖动可以调整顺序": "Drag to reorder",
 };

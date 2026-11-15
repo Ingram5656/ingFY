@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import type { Settings, BackgroundKind } from "../lib/settings";
-import { downscaleImage, saveBackgroundImage } from "../lib/settings";
+import { lightOrderOf, downscaleImage, saveBackgroundImage } from "../lib/settings";
 import type { LightStyle } from "./Lights";
 import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
@@ -260,6 +260,11 @@ const LIGHT_STYLES: { id: LightStyle; label: string }[] = [
   { id: "ring", label: "圆环" },
   { id: "wave", label: "声波" },
 ];
+
+/** 设置里的灯效也按顶栏拖出来的顺序排 */
+function orderedStyles(order: LightStyle[] | undefined) {
+  return lightOrderOf(order).map((id) => LIGHT_STYLES.find((l) => l.id === id)!);
+}
 
 function Slider({ label, value, onChange, display }: { label: string; value: number; onChange: (v: number) => void; display?: string }) {
   return (
@@ -543,7 +548,7 @@ export function SettingsPanel(p: Props) {
         <Group title={t("灯效")}>
           <div className="st-cell">
             <div className="st-fx" role="radiogroup" aria-label={t("灯效样式")}>
-              {LIGHT_STYLES.map((l) => (
+              {orderedStyles(s.lightOrder).map((l) => (
                 <button key={l.id} className="st-tile" role="radio" aria-checked={s.lightStyle === l.id} onClick={() => update({ lightStyle: l.id })}>
                   <span className="st-thumb st-thumb--fx">
                     <LightThumb id={l.id} palette={lightPal} />
@@ -806,7 +811,7 @@ function IslandSection({
         <Toggle label={t("拾音灯")} sub={t("关掉后背景是纯黑")} on={s.islandLightsOn} onChange={(on) => update({ islandLightsOn: on })} />
         <div className={`st-cell${s.islandLightsOn ? "" : " is-disabled"}`}>
           <div className="st-fx" role="radiogroup" aria-label={t("灯效样式")}>
-            {LIGHT_STYLES.map((l) => (
+            {orderedStyles(s.lightOrder).map((l) => (
               <button
                 key={l.id}
                 className="st-tile"

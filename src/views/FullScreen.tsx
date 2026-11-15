@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { useCrossfade, useIdle, useSegThumb } from "../lib/motion";
+import { useCrossfade, useDragReorder, useIdle, useSegThumb } from "../lib/motion";
 import { LibraryView } from "../components/Shelf";
 import { NowListPanel } from "../components/NowList";
 import { invoke } from "@tauri-apps/api/core";
@@ -17,7 +17,7 @@ import { findLineIndex, lineProgress } from "../lib/lrc";
 import { mediaControl, useAlbumPalette, useLyrics, usePlayer } from "../lib/player";
 import { PlayheadProvider, usePlayhead, usePositionRef } from "../lib/playhead";
 import type { LyricLine } from "../lib/types";
-import { lightPalette, loadBackgroundImage, thickScale, useApplySettings, useSettings } from "../lib/settings";
+import { lightOrderOf, lightPalette, loadBackgroundImage, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
 import { trackKey } from "../lib/types";
@@ -29,12 +29,7 @@ import { ShareSheet } from "../components/ShareSheet";
 import type { UpdateInfo } from "../components/SettingsPanel";
 import { t, tMsg, useLang } from "../lib/i18n";
 
-const STYLES: { id: LightStyle; label: string }[] = [
-  { id: "ink", label: "墨晕" },
-  { id: "hist", label: "直方图" },
-  { id: "ring", label: "圆环" },
-  { id: "wave", label: "声波" },
-];
+const STYLE_LABEL: Record<LightStyle, string> = { ink: "墨晕", hist: "直方图", ring: "圆环", wave: "声波" };
 
 /** 设计稿尺寸。整个界面按这个尺寸排版，再等比缩放到窗口大小，各部分比例位置始终不变 */
 const STAGE_W = 1440;
@@ -235,7 +230,10 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const sleepFading = sleep.left !== null && sleep.left <= SLEEP_FADE_MS;
   // 上下栏收起再出现时也重新量一次滑块位置
   useSegThumb(modeSegRef, `${viewMode}|${idle}|${libraryAvailable}`);
-  useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}`);
+  // 灯效选项可以拖动排序；顺序变了滑块也要重新定位
+  const lightOrder = lightOrderOf(settings.lightOrder);
+  useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}|${lightOrder.join(",")}`);
+  const reorder = useDragReorder(lightSegRef, lightOrder, (next) => update({ lightOrder: next }));
   const bg = settings.background;
   // 墨晕自带一整套配色：宣纸底、深色字，不用背景和颜色设置。只在歌词界面生效
   const ink = !vinyl && !library && settings.lightsOn && settings.lightStyle === "ink";
@@ -305,18 +303,21 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
               </svg>
             </button>
             <span className="seg-sep" aria-hidden="true" />
-            <div ref={lightSegRef} className="seg-group" role="radiogroup" aria-label={t("拾音灯效果")}>
+            <div ref={lightSegRef} className="seg-group" role="radiogroup" aria-label={t("拾音灯效果")} onClickCapture={reorder.onClickCapture}>
               <span className="seg-thumb" aria-hidden="true" />
-              {STYLES.map((s) => (
+              {lightOrder.map((id) => (
                 <button
-                  key={s.id}
+                  key={id}
                   data-seg
+                  data-reorder={id}
                   role="radio"
-                  aria-checked={settings.lightStyle === s.id}
-                  className={settings.lightStyle === s.id ? "is-on" : ""}
-                  onClick={() => update({ lightStyle: s.id, lightsOn: true })}
+                  aria-checked={settings.lightStyle === id}
+                  className={settings.lightStyle === id ? "is-on" : ""}
+                  title={t("拖动可以调整顺序")}
+                  onClick={() => update({ lightStyle: id, lightsOn: true })}
+                  {...reorder.itemProps}
                 >
-                  {t(s.label)}
+                  {t(STYLE_LABEL[id])}
                 </button>
               ))}
             </div>

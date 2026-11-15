@@ -16,6 +16,8 @@ export interface Settings {
   /** 背景暗度 0~100 */
   bgDim: number;
   lightStyle: LightStyle;
+  /** 灯效选项的排列顺序（顶栏里可以拖动排序，设置里也按这个顺序） */
+  lightOrder: LightStyle[];
   /** 灯光亮度 0~100 */
   lightBrightness: number;
   /** 色彩鲜艳度 0~100，50 为原色 */
@@ -91,6 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bgBlur: 60,
   bgDim: 30,
   lightStyle: "wave",
+  lightOrder: ["ink", "hist", "ring", "wave"],
   lightBrightness: 80,
   vividness: 50,
   beat: true,
@@ -260,6 +263,13 @@ export const lyricScale = (v: number) => 0.7 + (v / 100) * 0.6;
 export const thickScale = (v: number) => 0.5 + v / 100;
 /** 灵动岛缩放：0.75~1.25 倍 */
 export const islandScale = (v: number) => 0.75 + (v / 100) * 0.5;
+/** 存下来的顺序可能缺项、重复或者带着已经去掉的灯效：整理成四个都在、各出现一次 */
+export function lightOrderOf(order: readonly string[] | undefined): LightStyle[] {
+  const all = DEFAULT_SETTINGS.lightOrder;
+  const kept = (order ?? []).filter((id, i, a): id is LightStyle => (all as string[]).includes(id) && a.indexOf(id) === i);
+  return [...kept, ...all.filter((id) => !kept.includes(id))];
+}
+
 export const deskScale = (v: number) => 0.8 + (v / 100) * 0.4;
 
 /** 拾音灯实际使用的颜色：取自专辑，或者用户定的起止色渐变 */

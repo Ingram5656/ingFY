@@ -1105,3 +1105,32 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 .fs.is-ink .fs-list { background: rgba(255,253,247,0.55); color: #1d1a16; border: 1px solid rgba(29,26,22,0.1);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 18px 40px rgba(60,50,30,0.14); }
 .fs.is-ink .fs-list.is-on { background: #1d1a16; color: #efe9dc; }
+
+/* ===== 灯效选项拖动排序：iOS 液态玻璃 =====
+   拖动时白色滑块先淡出，选中项自己带白底跟着走；别的选项用弹簧让位；
+   拖着的那颗浮起来变成透亮的玻璃泡，松手后弹回新位置、缩回原大小，滑块再从新位置淡回来 */
+.seg-group.is-reordering > .seg-thumb { opacity: 0 !important; transition: opacity 0.16s ease !important; }
+.seg-group.is-reordering button[data-seg] {
+  transition: translate 0.46s var(--ease-spring), scale 0.38s var(--ease-spring), color 0.25s ease, background-color 0.25s ease, box-shadow 0.3s ease; }
+.seg-group.is-reordering button[data-seg].is-on { background: #fff; color: var(--ink); }
+.seg-group button[data-seg].is-lifted {
+  z-index: 3; scale: 1.12; cursor: grabbing;
+  /* 跟手的位移不做过渡，只有放大、拉伸和光影有弹性 */
+  transition: scale 0.32s var(--ease-spring), color 0.25s ease, background-color 0.25s ease, box-shadow 0.3s ease !important;
+  background:
+    radial-gradient(120% 120% at 30% 0%, rgba(255,255,255,0.42), rgba(255,255,255,0) 60%),
+    rgba(255,255,255,0.14);
+  -webkit-backdrop-filter: blur(14px) saturate(1.9) brightness(1.08); backdrop-filter: blur(14px) saturate(1.9) brightness(1.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), inset 0 -1px 1px rgba(255,255,255,0.2), 0 0 0 0.5px rgba(255,255,255,0.45),
+    0 10px 26px rgba(0,0,0,0.32), 0 2px 6px rgba(0,0,0,0.18); }
+.seg-group button[data-seg].is-lifted.is-on { background: radial-gradient(120% 120% at 30% 0%, #fff, rgba(255,255,255,0.88) 70%); color: var(--ink); }
+.seg-group button[data-seg].is-lifted:active { transform: none; }
+.seg-group button[data-seg][data-reorder] { touch-action: pan-y; }
+/* 墨晕的宣纸配色下 */
+.fs.is-ink .seg-group.is-reordering button[data-seg].is-on,
+.fs.is-ink .seg-group button[data-seg].is-lifted.is-on { background: #1d1a16; color: #efe9dc; }
+.fs.is-ink .seg-group button[data-seg].is-lifted:not(.is-on) { background: rgba(255,253,247,0.7); color: #1d1a16;
+  box-shadow: inset 0 1px 0 #fff, 0 0 0 0.5px rgba(29,26,22,0.12), 0 10px 24px rgba(60,50,30,0.22); }
+@media (prefers-reduced-motion: reduce) {
+  .seg-group.is-reordering button[data-seg], .seg-group button[data-seg].is-lifted { transition-duration: 0.01s !important; }
+}
