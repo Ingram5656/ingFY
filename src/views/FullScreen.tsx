@@ -6,6 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Lights, type LightStyle } from "../components/Lights";
+import { Lights3D } from "../components/Lights3D";
+import { InkCover } from "../components/InkCover";
 import { FitText } from "../components/FitText";
 import { LyricScroller } from "../components/LyricScroller";
 import { SeekBar } from "../components/SeekBar";
@@ -20,7 +22,7 @@ import type { LyricLine } from "../lib/types";
 import { applyShortcuts, shortcutsOf } from "../lib/shortcuts";
 import { useBackgroundVideo } from "../lib/bgvideo";
 import { DEFAULT_BASE, deepTone } from "../lib/palette";
-import { lightOrderOf, lightPalette, loadBackgroundImage, thickScale, useApplySettings, useSettings } from "../lib/settings";
+import { lightOrderOf, lightPalette, loadBackgroundImage, lyricScale, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
 import { trackKey } from "../lib/types";
@@ -126,6 +128,24 @@ function LiveLyrics(p: { lines: LyricLine[]; offset: number; duration: number; s
       onSeek={(t) => seek(Math.max(0, t - p.offset))}
       showTranslation={p.showTranslation}
     />
+  );
+}
+
+type Lights3DProps = ComponentProps<typeof Lights3D>;
+/**
+ * 一层拾音灯。平时是原来的 2D 灯；打开 3D 换成画布，镜头从 2D 的样子转过去。
+ * 关掉 3D 时画布先留着，等镜头转回 2D 的样子再换回原来的灯，所以开和关都是一次连续的转场。
+ */
+function LightLayer({ on3d, ...rest }: Omit<Lights3DProps, "onFlat">) {
+  const [canvasOn, setCanvasOn] = useState(on3d);
+  useEffect(() => {
+    if (on3d) setCanvasOn(true);
+  }, [on3d]);
+  if (canvasOn) return <Lights3D {...rest} on3d={on3d} onFlat={() => setCanvasOn(false)} />;
+  return (
+    <div className="light-2d">
+      <Lights palette={rest.palette} style={rest.style} playing={rest.playing} reactive={rest.reactive} thickness={rest.thickness} />
+    </div>
   );
 }
 
@@ -268,6 +288,15 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   // 底色：默认深紫、跟随专辑（封面颜色压暗）或自己挑的颜色
   const base =
     settings.baseColorMode === "album" ? deepTone(palette) : settings.baseColorMode === "custom" ? settings.baseColor : DEFAULT_BASE;
+  // 3D 模式：只在歌词界面、拾音灯开着时生效
+  const d3 = settings.light3d && settings.lightsOn && !vinyl && !library;
+  // 有时间轴的歌词在 3D 里画进场景，界面上原来那一列收起来；没有时间轴的照旧显示
+  const lyrics3d = d3 && showLyrics && lyrics.status === "ready" && lyrics.synced;
+  // 唱过的字的颜色（和 --lyric-sung 一个算法）
+  const c0 = /^#[0-9a-f]{6}$/i.test(palette[0] ?? "") ? palette[0] : "#FF9BB3";
+  const sungHex = settings.lyricColorMode === "custom" && /^#[0-9a-f]{6}$/i.test(settings.lyricColor) ? settings.lyricColor : c0;
+  const sungMix = settings.lyricColorMode === "custom" ? 0 : 0.45;
+  const sung = [1, 3, 5].map((i) => Math.round(255 * sungMix + parseInt(sungHex.slice(i, i + 2), 16) * (1 - sungMix))) as [number, number, number];
   const showImage = bg === "image" && bgImage;
   const showCover = bg === "cover" && artwork;
 
@@ -353,6 +382,22 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
                 </button>
               ))}
             </div>
+            {/* 3D 模式：镜头转过去，灯、场景和歌词都变成立体的 */}
+            <button
+              className={`seg-3d${settings.light3d && settings.lightsOn ? " is-on" : ""}`}
+              role="switch"
+              aria-checked={settings.light3d && settings.lightsOn}
+              aria-disabled={!settings.lightsOn}
+              aria-label={t(settings.light3d ? "关闭 3D 模式" : "打开 3D 模式")}
+              title={settings.lightsOn ? t(settings.light3d ? "关闭 3D 模式" : "打开 3D 模式") : t("打开拾音灯后才能用 3D 模式")}
+              onClick={() => settings.lightsOn && update({ light3d: !settings.light3d })}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 2.8 20 7.4v9.2L12 21.2 4 16.6V7.4z" />
+                <path d="M4 7.4 12 12l8-4.6M12 12v9.2" />
+              </svg>
+              <span>3D</span>
+            </button>
             <span className="seg-sep" aria-hidden="true" />
             {/* 歌词、专辑信息的显示开关。拾音灯关着时不能关（不然画面就空了），强制都显示 */}
             <div className="seg-vis" role="group" aria-label={t("显示内容")}>
@@ -477,12 +522,39 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
                   .map((l) => (
                     <div key={l.key} className={`light-layer${l.leaving ? " is-leaving" : " is-entering"}`}>
                       <div className="light-dim">
-                        <Lights palette={lightPalette(settings, palette)} style={l.key as LightStyle} playing={!!now?.playing} reactive={settings.beat} thickness={thickScale(settings.lightThickness ?? 50)} />
+                        <LightLayer
+                          style={l.key as LightStyle}
+                          palette={lightPalette(settings, palette)}
+                          base={base}
+                          alpha={0.25 + (settings.lightBrightness / 100) * 0.75}
+                          thickness={thickScale(settings.lightThickness ?? 50)}
+                          playing={!!now?.playing}
+                          reactive={settings.beat}
+                          on3d={d3}
+                          lines={lyrics3d ? lines : null}
+                          offset={offset}
+                          duration={now?.durationMs ?? 0}
+                          lyricScale={lyricScale(settings.lyricSize)}
+                          sung={sung}
+                        />
                       </div>
                     </div>
                   ))}
-                <section className={`fs-track${showAlbum ? "" : " is-hidden"}${layout === "album" ? " is-solo" : ""}`} aria-hidden={!showAlbum || undefined}>
-                  {artwork ? <img key={artwork.dataUrl.length + (now?.title ?? "")} className="cover cover-in" src={artwork.dataUrl} alt="" /> : <div className="cover cover--empty" />}
+                {/* 3D 时：墨晕把专辑缩小挪到左上的天空里，另外三种灯效把专辑收起来 */}
+                <section
+                  className={`fs-track${showAlbum && !(d3 && !ink) ? "" : " is-hidden"}${layout === "album" ? " is-solo" : d3 && ink ? " is-ink3d" : ""}`}
+                  aria-hidden={!showAlbum || (d3 && !ink) || undefined}
+                >
+                  {artwork ? (
+                    // 墨晕里封面过一遍水墨滤镜
+                    ink ? (
+                      <InkCover key={artwork.dataUrl.length + (now?.title ?? "")} className="cover cover--ink cover-in" src={artwork.dataUrl} />
+                    ) : (
+                      <img key={artwork.dataUrl.length + (now?.title ?? "")} className="cover cover-in" src={artwork.dataUrl} alt="" />
+                    )
+                  ) : (
+                    <div className="cover cover--empty" />
+                  )}
                   <FitText key={now?.title ?? ""} className="title text-in" fitKey={now?.title ?? ""} minScale={0.7} wrap={false}>
                     {now?.title || t("没有在播放")}
                   </FitText>
@@ -496,7 +568,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
                   )}
                 </section>
 
-                <section className={`fs-lyrics${showLyrics ? "" : " is-hidden"}${layout === "lyrics" ? " is-solo" : ""}`} aria-live="polite" aria-hidden={!showLyrics || undefined}>
+                <section className={`fs-lyrics${showLyrics && !lyrics3d ? "" : " is-hidden"}${layout === "lyrics" ? " is-solo" : ""}`} aria-live="polite" aria-hidden={!showLyrics || undefined}>
                   {lyrics.status === "loading" && <p className="hint">{t("正在找歌词…")}</p>}
                   {(lyrics.status === "none" || lyrics.status === "error") && now && (
                     <p className="hint">{lyrics.status === "error" ? t("歌词加载失败，检查一下网络") : lyrics.instrumental ? t("纯音乐，没有歌词") : t("没找到这首歌的歌词")}</p>

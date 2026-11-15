@@ -1172,3 +1172,33 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 .st-card .st-tiles.st-tiles--bg { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
 .st-link:disabled { opacity: 0.45; cursor: default; }
 .st-swatch--dark { border-color: rgba(255,255,255,0.35); }
+
+/* ===================== 拾音灯 3D 模式 ===================== */
+/* 画布铺满整个窗口（位置和大小由脚本按窗口算），灯、场景和歌词都画在里面；按住左右拖可以转镜头 */
+.lights3d { position: absolute; display: block; pointer-events: auto; cursor: grab; touch-action: none;
+  filter: saturate(var(--vivid, 1)); animation: light3d-fade 0.3s ease both; }
+.lights3d:active { cursor: grabbing; }
+.lights3d.is-ink { filter: none; }
+/* 画布和原来的 2D 灯互相换的时候淡一下，不是硬切 */
+.light-2d { position: absolute; inset: 0; animation: light3d-fade 0.3s ease both; }
+@keyframes light3d-fade { from { opacity: 0; } to { opacity: 1; } }
+/* 顶栏的 3D 开关 */
+.seg .seg-3d { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; padding: 0 14px 0 10px; font-weight: 700;
+  color: rgba(255,255,255,0.7); transition: background-color 0.35s var(--ease-apple), color 0.25s ease, box-shadow 0.35s ease, transform 0.18s var(--ease-apple); }
+.seg .seg-3d svg { transform: rotate(-90deg); transition: transform 0.9s var(--ease-apple); }
+.seg .seg-3d.is-on { background: radial-gradient(120% 140% at 30% 0%, #fff, rgba(255,255,255,0.86) 70%); color: var(--ink);
+  box-shadow: inset 0 1px 0 #fff, 0 6px 18px rgba(0,0,0,0.25); }
+.seg .seg-3d.is-on svg { transform: none; }
+.seg .seg-3d:active { transform: scale(0.94); }
+.seg .seg-3d[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
+.seg .seg-3d[aria-disabled="true"]:active { transform: none; }
+.fs.is-ink .seg .seg-3d { color: rgba(29,26,22,0.7); }
+.fs.is-ink .seg .seg-3d.is-on { background: #1d1a16; color: #efe9dc; box-shadow: none; }
+/* 墨晕：封面过了水墨滤镜，是画在纸上的，不要卡片的边框、圆角和阴影 */
+.cover.cover--ink, .fs.is-ink .cover.cover--ink { display: block; border: 0; border-radius: 0; box-shadow: none; }
+/* 墨晕 3D：专辑缩小挪到左上的天空里，给山水和竖排的歌词让位置 */
+.fs-track.is-ink3d { transform: translate(-34px, -140px) scale(0.8); }
+@media (prefers-reduced-motion: reduce) {
+  .lights3d, .light-2d { animation: none; }
+  .seg .seg-3d svg { transition: none; }
+}

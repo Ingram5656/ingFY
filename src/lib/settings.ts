@@ -20,6 +20,8 @@ export interface Settings {
   /** 背景暗度 0~100 */
   bgDim: number;
   lightStyle: LightStyle;
+  /** 拾音灯 3D 模式：灯、场景和歌词变成立体的（只在全屏歌词界面生效） */
+  light3d: boolean;
   /** 灯效选项的排列顺序（顶栏里可以拖动排序，设置里也按这个顺序） */
   lightOrder: LightStyle[];
   /** 全局快捷键，空字符串表示不用 */
@@ -101,6 +103,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bgBlur: 60,
   bgDim: 30,
   lightStyle: "wave",
+  light3d: false,
   lightOrder: ["ink", "hist", "ring", "wave"],
   shortcuts: DEFAULT_SHORTCUTS,
   lightBrightness: 80,
