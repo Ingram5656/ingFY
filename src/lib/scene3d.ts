@@ -1493,8 +1493,8 @@ export class Scene3D {
   }
 
   // ---------------- 歌词 ----------------
-  // 直方图 / 圆环 / 声波：一页三句，均匀铺满整个画面；每个字（英文是每个词）大小、高低、歪斜、远近都不一样，轻轻浮动。
-  //   三句依次唱亮，唱完翻页：旧的一页散开淡掉，新的一页从远处一个字一个字飘到位。
+  // 直方图 / 圆环 / 声波：只显示正在唱的这一句，横着铺开在画面里；每个字（英文是每个词）大小、高低、歪斜、远近都不一样，轻轻浮动。
+  //   唱完换句：旧的一句散开淡掉，新的一句从远处一个字一个字飘到位。
   // 墨晕：像写书法——竖排，从上往下一个字一个字写出来，一句一列，新的一列写在左边；写过的几列留在右边，越旧墨色越淡。
   // 关着 3D 时不画（2D 的歌词是界面上原来那一列）；打开时每个字从列表里的位置飞到空中的位置
   private tokens(i: number, text: string): Tok[] {
@@ -1545,7 +1545,8 @@ export class Scene3D {
     const g = this.g;
     const inkW = this.props.style === "ink" ? 1 : 0;
     const f = 1200;
-    const PAGE = 3;
+    // 一次只显示一句
+    const PAGE = 1;
     const sway = this.props.reduce ? 0 : 1;
     const LS = this.props.lyricScale;
     const ease = (x: number) => 1 - Math.pow(1 - clamp(x), 3);
@@ -1566,8 +1567,8 @@ export class Scene3D {
       this.pageAt = t;
     }
     const tp = t - this.pageAt;
-    const pin = this.props.reduce ? 1 : clamp(tp / 1.0);
-    const pout = this.props.reduce ? 1 : clamp(tp / 0.6);
+    const pin = this.props.reduce ? 1 : clamp(tp / 0.6);
+    const pout = this.props.reduce ? 1 : clamp(tp / 0.4);
     if (n !== this.sungLine) {
       this.sungLine = n;
       this.sungAt.clear();
@@ -1579,7 +1580,7 @@ export class Scene3D {
     // 歌词自己的镜头：只跟着左右转，所以远近不同的字会错开
     const cam = this.view({ yaw: (0.06 * Math.sin(t * 0.23) * sway + this.yaw * 0.6) * k, pitch: 0, D: f + 500, f, tx: 0, ty: 0, tz: 500, cx: W / 2, cy: H / 2 });
     const place = (sx: number, sy: number, z: number) => cam.p(((sx - W / 2) * (f + z)) / f, ((H / 2 - sy) * (f + z)) / f, z);
-    const ROWY = [238, 468, 692];
+    const ROWY = 300;
     const COLA = [1, 0.62, 0.4, 0.22];
     const dark = [29, 26, 22];
     for (let i = Math.floor(cur) - 3; i <= Math.floor(cur) + 4; i++) {
@@ -1593,9 +1594,8 @@ export class Scene3D {
       // 2D 列表里的位置（飞出来的起点）
       const sc2 = (0.62 + 0.38 * act) * LS;
       const cy2 = 364 + rel * 95.5 * LS;
-      // 铺开的那一页：这句在第几行、这一页是正在进来还是正在出去
+      // 铺开的那一句：是正在进来还是正在出去
       const pg = Math.floor(i / PAGE);
-      const row = i % PAGE;
       const onPage = pg === this.page;
       const leaving = pg === this.prevPage && pout < 1;
       const lineA = i === n ? -1 : i < n ? 0.5 : 0.3;
@@ -1620,13 +1620,13 @@ export class Scene3D {
           since = t - this.sungAt.get(c)!;
         }
         const x2 = 540 + (tk.left + tk.w / 2) * sc2;
-        // 铺开：每行的字按宽度均匀摊在整个画面上，再各自乱一点
+        // 铺开：字按宽度均匀摊在整个画面上，再各自乱一点
         const span = tk.w + (tk.latin ? F * 0.4 : 0);
         const wide = tk.w > F * 1.6;
         let aS = 0;
         let zAdd = 0;
         if (onPage) {
-          const q = ease((pin - R(29) * 0.4) / 0.6);
+          const q = ease((pin - R(29) * 0.35) / 0.65);
           aS = q;
           zAdd = (1 - q) * 1000;
         } else if (leaving) {
@@ -1635,8 +1635,8 @@ export class Scene3D {
         }
         aS *= lineA < 0 ? 0.42 + 0.58 * pr : lineA;
         const ps = place(
-          145 + ((cumS + span / 2) / sumW) * 1150 + (R(13) - 0.5) * 0.42 * ((span / sumW) * 1150) + (row === 1 ? 20 : 0),
-          ROWY[row] + (R(17) - 0.5) * 150 + 9 * Math.sin(t * 0.9 + i * 2.1 + c * 1.3) * sway,
+          145 + ((cumS + span / 2) / sumW) * 1150 + (R(13) - 0.5) * 0.42 * ((span / sumW) * 1150),
+          ROWY + (R(17) - 0.5) * 150 + 9 * Math.sin(t * 0.9 + i * 2.1 + c * 1.3) * sway,
           -140 + R(19) * 700 + zAdd,
         );
         cumS += span;
