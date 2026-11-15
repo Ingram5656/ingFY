@@ -159,6 +159,23 @@ fn island_layout(app: AppHandle, width: f64, height: f64) -> Result<(), String> 
     Ok(())
 }
 
+/// 桌面歌词窗口的高度跟着内容走：字调大以后，歌词条上面的播放控制栏不会被窗口顶边切掉。
+/// 底边不动、往上长，用户摆好的歌词位置保持不变；宽度不改
+#[tauri::command]
+fn desktop_fit(app: AppHandle, height: f64) -> Result<(), String> {
+    let Some(win) = app.get_webview_window("desktop") else { return Ok(()) };
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let pos = win.outer_position().map_err(|e| e.to_string())?;
+    let size = win.outer_size().map_err(|e| e.to_string())?;
+    let h = (height * scale).round().max(1.0) as u32;
+    if (h as i32 - size.height as i32).abs() <= 1 {
+        return Ok(());
+    }
+    let bottom = pos.y + size.height as i32;
+    win.set_size(PhysicalSize::new(size.width, h)).map_err(|e| e.to_string())?;
+    win.set_position(PhysicalPosition::new(pos.x, bottom - h as i32)).map_err(|e| e.to_string())
+}
+
 /// 异步命令：第一次显示时要创建窗口，Windows 上不能在同步命令里建
 #[tauri::command]
 async fn set_desktop_visible(app: AppHandle, visible: bool) -> Result<(), String> {
@@ -979,6 +996,7 @@ pub fn run() {
             set_desktop_visible,
             island_set,
             island_layout,
+            desktop_fit,
             set_light_response,
             cache_size,
             clear_cache,

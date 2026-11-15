@@ -31,6 +31,36 @@ export default function DesktopLyrics() {
   useApplySettings(settings);
   const spotify = useSpotify(now);
   const glowRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  // 窗口高度跟着歌词条走：字调大后歌词条变高，窗口往上长，上面的控制栏才不会被切掉
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    let last = 0;
+    const fit = () => {
+      // 上内边距 6 + 控制栏 46（锁定时隐藏，也照样留着，免得锁定 / 解锁时窗口跳动）+ 间距 8 + 歌词条 + 下内边距 12
+      const need = Math.ceil(6 + 46 + 8 + bar.offsetHeight + 12);
+      if (Math.abs(need - last) < 2) return;
+      last = need;
+      invoke("desktop_fit", { height: need }).catch(() => {});
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(bar);
+    // 手动把窗口拉矮了也拉回来（高度对了后端就不再动它）
+    const onResize = () => {
+      if (Math.abs(window.innerHeight - last) > 1) {
+        last = 0;
+        fit();
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
 
   // 玻璃条下面的辉光也跟着音乐跳
   useEffect(() => {
@@ -103,7 +133,7 @@ export default function DesktopLyrics() {
         </button>
       </div>
 
-      <div className="dl-bar glass" data-tauri-drag-region>
+      <div className="dl-bar glass" data-tauri-drag-region ref={barRef}>
         <div className={`dl-glow${settings.lightsOn ? "" : " is-hidden"}`} aria-hidden="true" ref={glowRef}>
           {Array.from({ length: 9 }, (_, i) => (
             <span key={i} style={{ background: pickGradient(lightPalette(settings, palette), i, 9), animationDelay: `${(i * 0.31) % 1.2}s` }} />
