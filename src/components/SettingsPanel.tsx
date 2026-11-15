@@ -384,7 +384,7 @@ function Swatches({ value, active, onPick, label }: { value: string; active: boo
  * 桌面歌词预览：用桌面歌词同一套样式，摆在一张"桌面壁纸"上，
  * 调透明度时能看到后面的东西透出来多少；按 820 宽画好再整体缩小。
  */
-function DesktopPreview({ showRomaji }: { showRomaji: boolean }) {
+function DesktopPreview({ showRomaji, lights }: { showRomaji: boolean; lights: string[] | null }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.6);
   useEffect(() => {
@@ -403,6 +403,13 @@ function DesktopPreview({ showRomaji }: { showRomaji: boolean }) {
       </div>
       <div className="st-dlpv-stage" style={{ transform: `scale(${scale})` }}>
         <div className="dl-bar glass">
+          {lights && (
+            <div className="dl-glow" aria-hidden="true">
+              {Array.from({ length: 9 }, (_, i) => (
+                <span key={i} style={{ background: pickGradient(lights, i, 9), animationDelay: `${(i * 0.31) % 1.2}s` }} />
+              ))}
+            </div>
+          )}
           <p className="dl-line dl-line--top is-active">
             <Karaoke text="君の声が聞こえる" progress={0.55} />
             {showRomaji && <span className="dl-roma">kimi no koe ga kikoeru</span>}
@@ -810,7 +817,7 @@ export function SettingsPanel(p: Props) {
       <>
         {/* 预览钉在顶上，往下调颜色、透明度时一直看得到 */}
         <div className="st-dlpv-pin">
-          <DesktopPreview showRomaji={s.deskShowRomaji} />
+          <DesktopPreview showRomaji={s.deskShowRomaji} lights={s.deskLightsOn ? lightPal : null} />
         </div>
         <Group title={t("唱到的字的颜色")}>
           <button className="st-cell st-choice" role="radio" aria-checked={s.deskLyricColorMode === "same"} onClick={() => update({ deskLyricColorMode: "same" })}>
@@ -861,6 +868,7 @@ export function SettingsPanel(p: Props) {
           </div>
         </Group>
         <Group>
+          <Toggle label={t("拾音灯")} sub={t("歌词条下面跟着音乐跳的光，和全屏的拾音灯分开开关")} on={s.deskLightsOn} onChange={(v) => update({ deskLightsOn: v })} />
           <Toggle label={t("显示罗马音")} sub={t("日语歌有罗马音时，在每行下面显示")} on={s.deskShowRomaji} onChange={(v) => update({ deskShowRomaji: v })} />
         </Group>
         <Group

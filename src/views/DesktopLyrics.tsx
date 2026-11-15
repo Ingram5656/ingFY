@@ -62,7 +62,7 @@ export default function DesktopLyrics() {
   // 玻璃条下面的辉光也跟着音乐跳
   useEffect(() => {
     const box = glowRef.current;
-    if (!box || !settings.beat) return;
+    if (!box || !settings.beat || !settings.deskLightsOn) return;
     let idle: ReturnType<typeof setTimeout> | undefined;
     const off = onAudioLevels((bands) => {
       const values = mirrored(bands, 9);
@@ -79,7 +79,7 @@ export default function DesktopLyrics() {
       clearTimeout(idle);
       box.classList.remove("is-live");
     };
-  }, [settings.beat]);
+  }, [settings.beat, settings.deskLightsOn]);
 
   const lines = lyrics.lines;
   const idx = lyrics.synced ? findLineIndex(lines, lyricPos) : -1;
@@ -139,7 +139,7 @@ export default function DesktopLyrics() {
       </div>
 
       <div className="dl-bar glass" data-tauri-drag-region>
-        <div className={`dl-glow${settings.lightsOn ? "" : " is-hidden"}`} aria-hidden="true" ref={glowRef}>
+        <div className={`dl-glow${settings.deskLightsOn ? "" : " is-hidden"}`} aria-hidden="true" ref={glowRef}>
           {Array.from({ length: 9 }, (_, i) => (
             <span key={i} style={{ background: pickGradient(lightPalette(settings, palette), i, 9), animationDelay: `${(i * 0.31) % 1.2}s` }} />
           ))}

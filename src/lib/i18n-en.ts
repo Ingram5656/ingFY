@@ -238,6 +238,7 @@ export const EN: Record<string, string> = {
   "淡紫": "Lavender",
   "显示翻译": "Show translation",
   "显示罗马音": "Show romaji",
+  "歌词条下面跟着音乐跳的光，和全屏的拾音灯分开开关": "The glow under the lyrics bar that moves with the music, switched separately from the full-screen lights",
   "日语歌有罗马音时，在原文下面显示": "Shown under the original line when a Japanese song has romaji",
   "日语歌有罗马音时，在每行下面显示": "Shown under each line when a Japanese song has romaji",
   "外语歌有翻译时，在每句下面显示": "Shown under each line when a foreign-language song has a translation",

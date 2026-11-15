@@ -61,6 +61,8 @@ export interface Settings {
   deskBgTransparency: number;
   /** 有罗马音时在桌面歌词每行下面显示 */
   deskShowRomaji: boolean;
+  /** 桌面歌词条下面的拾音灯，和全屏的拾音灯分开开关 */
+  deskLightsOn: boolean;
   /** 歌词界面：显示歌词 / 显示专辑封面和信息。两个都关时只剩拾音灯；拾音灯关着时这两项不能改，强制都显示 */
   showLyrics: boolean;
   showAlbum: boolean;
@@ -136,6 +138,7 @@ export const DEFAULT_SETTINGS: Settings = {
   deskRestColor: "#FFFFFF",
   deskBgTransparency: 50,
   deskShowRomaji: false,
+  deskLightsOn: true,
   showLyrics: true,
   showAlbum: true,
   lightColorMode: "album",
@@ -172,6 +175,8 @@ function load(): Settings {
     // 2.1.0 去掉了"灯管"：之前选灯管的换成最接近的声波
     if ((merged.lightStyle as string) === "tube") merged.lightStyle = "wave";
     if ((merged.islandLightStyle as string) === "tube") merged.islandLightStyle = "wave";
+    // 2.2.0 之前桌面歌词的灯跟着拾音灯总开关走：升级上来时沿用总开关当时的状态
+    if (saved.deskLightsOn === undefined && saved.lightsOn !== undefined) merged.deskLightsOn = saved.lightsOn;
     // 以后新增的动作也要有默认组合
     merged.shortcuts = shortcutsOf(merged.shortcuts);
     return merged;
