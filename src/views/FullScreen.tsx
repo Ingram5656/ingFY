@@ -223,6 +223,19 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   useEffect(() => {
     invoke("island_set", { visible: settings.islandOn, locked: settings.islandLocked }).catch(() => {});
   }, [settings.islandOn, settings.islandLocked]);
+  // 聊天模式窗口也是用到时才建：开关在设置里，由主窗口告诉后端
+  useEffect(() => {
+    invoke("chat_set", { visible: settings.chatWindowOn }).catch(() => {});
+  }, [settings.chatWindowOn]);
+  // 聊天窗口自己点了关闭（后端已经把它藏起来），或者托盘里点了显示 / 隐藏
+  useEffect(() => {
+    const a = listen("chat-closed", () => update({ chatWindowOn: false }));
+    const b = listen("chat-toggle", () => update({ chatWindowOn: !settingsRef.current.chatWindowOn }));
+    return () => {
+      void a.then((f) => f());
+      void b.then((f) => f());
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // 全局快捷键按设置里存的组合注册（后端启动时先用默认组合）
   const shortcutKey = JSON.stringify(settings.shortcuts);
   useEffect(() => {

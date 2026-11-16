@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { resolveLang, setLang, type LangSetting } from "./i18n";
 import { setLightResponse, setLightSensitivity } from "./audio";
 import { DEFAULT_SHORTCUTS, shortcutsOf, type ShortcutMap } from "./shortcuts";
+import type { ChatSplit } from "./chat";
 
 export type BackgroundKind = "fluid" | "gradient" | "image" | "video" | "cover";
 export type BaseMode = "default" | "album" | "custom" | "transparent";
@@ -115,6 +116,12 @@ export interface Settings {
   /** 灵动岛字幕唱到的字的颜色 */
   islandLyricColorMode: "album" | "custom";
   islandLyricColor: string;
+  /** 聊天模式窗口：开关、置顶、浅色 / 深色 / 跟随系统、两个人怎么分、我的头像（小图 data URL，空字符串用默认头像） */
+  chatWindowOn: boolean;
+  chatOnTop: boolean;
+  chatTheme: "light" | "dark" | "system";
+  chatSplit: ChatSplit;
+  chatAvatar: string;
 }
 
 /** 一张唱片的外观设置：标签、花纹、颜色 */
@@ -181,6 +188,11 @@ export const DEFAULT_SETTINGS: Settings = {
   islandLightStyle: "wave",
   islandLyricColorMode: "album",
   islandLyricColor: "#FFFFFF",
+  chatWindowOn: false,
+  chatOnTop: false,
+  chatTheme: "light",
+  chatSplit: "auto",
+  chatAvatar: "",
 };
 
 const KEY = "nige.settings";

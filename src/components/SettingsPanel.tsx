@@ -1050,6 +1050,7 @@ export function SettingsPanel(p: Props) {
       </>
     ),
     island: <IslandSection settings={s} update={update} palette={p.palette} lightPal={lightPal} artworkUrl={p.artworkUrl} />,
+    chat: <ChatSection settings={s} update={update} artworkUrl={p.artworkUrl} />,
     general: <GeneralSection initial={p.updateInfo} settings={s} update={update} />,
   };
 
@@ -1348,6 +1349,127 @@ function ClientSection() {
   );
 }
 
+// ------------------------------------------------------------------ 聊天模式
+
+/** 头像：裁成正方形、缩到 160，存成小 JPEG */
+function avatarFrom(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 160;
+      canvas.getContext("2d")!.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 160, 160);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.86));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(t("这个文件不是能打开的图片")));
+    };
+    img.src = url;
+  });
+}
+
+function ChatSection({ settings: s, update, artworkUrl }: { settings: Settings; update: (patch: Partial<Settings>) => void; artworkUrl: string | null }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      update({ chatAvatar: await avatarFrom(file) });
+      setError(null);
+    } catch (err) {
+      setError(String((err as Error).message ?? err));
+    }
+  };
+  const splits: [Settings["chatSplit"], string, string][] = [
+    ["auto", "自动", "有男 / 女标记就按对唱，没有就按段落"],
+    ["section", "按段落", "主歌是对方唱，重复的副歌是我唱"],
+    ["duet", "按对唱", "按歌词里的男 / 女标记分，合唱两边都发"],
+    ["alternate", "一句一换", "两个人轮流"],
+  ];
+  return (
+    <>
+      <Group>
+        <Toggle label={t("显示聊天窗口")} sub={t("单独的竖条窗口，大小和长宽比都能拖")} on={s.chatWindowOn} onChange={(on) => update({ chatWindowOn: on })} />
+        <Toggle label={t("置顶")} on={s.chatOnTop} onChange={(on) => update({ chatOnTop: on })} />
+      </Group>
+
+      <Group title={t("外观")}>
+        <div className="st-cell">
+          <div className="st-seg" role="radiogroup" aria-label={t("外观")}>
+            {(
+              [
+                ["light", t("浅色")],
+                ["dark", t("深色")],
+                ["system", t("跟随系统")],
+              ] as const
+            ).map(([id, name]) => (
+              <button key={id} role="radio" aria-checked={s.chatTheme === id} onClick={() => update({ chatTheme: id })}>
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Group>
+
+      <Group title={t("头像")}>
+        <div className="st-cell st-chat-avatars">
+          <span className="st-chat-av">
+            {artworkUrl ? <img src={artworkUrl} alt="" /> : <span className="st-chat-av--album" />}
+            <small>{t("对方：专辑封面")}</small>
+          </span>
+          <span className="st-chat-av">
+            {s.chatAvatar ? (
+              <img src={s.chatAvatar} alt="" />
+            ) : (
+              <span className="st-chat-av--me">
+                <svg viewBox="0 0 40 40" width="100%" height="100%" aria-hidden="true">
+                  <circle cx="20" cy="16" r="7" fill="rgba(255,255,255,.92)" />
+                  <path d="M7 37c1.5-8 6.5-12 13-12s11.5 4 13 12" fill="rgba(255,255,255,.92)" />
+                </svg>
+              </span>
+            )}
+            <small>{t("我")}</small>
+          </span>
+          <span className="st-chat-av-actions">
+            <button className="st-btn" onClick={() => fileRef.current?.click()}>
+              {s.chatAvatar ? t("换一张") : t("选择图片")}
+            </button>
+            {s.chatAvatar && (
+              <button className="st-link" onClick={() => update({ chatAvatar: "" })}>
+                {t("用默认头像")}
+              </button>
+            )}
+          </span>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={pick} />
+        </div>
+        {error && (
+          <div className="st-cell" role="alert">
+            {error}
+          </div>
+        )}
+      </Group>
+
+      <Group title={t("两个人怎么分")}>
+        {splits.map(([id, label, sub]) => (
+          <button key={id} className="st-cell st-choice" role="radio" aria-checked={s.chatSplit === id} onClick={() => update({ chatSplit: id })}>
+            <span className="st-option-text">
+              <span>{t(label)}</span>
+              <small>{t(sub)}</small>
+            </span>
+            {s.chatSplit === id && <CheckIcon />}
+          </button>
+        ))}
+      </Group>
+    </>
+  );
+}
+
 // ------------------------------------------------------------------ 分组、开关行
 
 /** iOS 设置里那种圆角分组：可选的小标题、几行内容、底部灰色说明 */
@@ -1375,7 +1497,7 @@ function Toggle({ label, sub, on, onChange, disabled }: { label: string; sub?: s
   );
 }
 
-type PageId = "look" | "lyrics" | "desktop" | "lights" | "island" | "spotify" | "general";
+type PageId = "look" | "lyrics" | "desktop" | "lights" | "island" | "chat" | "spotify" | "general";
 
 const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
   {
@@ -1428,6 +1550,16 @@ const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <rect x="3" y="8" width="18" height="8" rx="4" fill="#fff" />
         <circle cx="7.2" cy="12" r="2" fill="#000" />
+      </svg>
+    ),
+  },
+  {
+    id: "chat",
+    label: "聊天模式",
+    color: "linear-gradient(135deg, #34C759, #07A84F)",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 5.5h16v10H10l-4 3.5v-3.5H4z" />
       </svg>
     ),
   },

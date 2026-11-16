@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口、桌面歌词和灵动岛窗口的权限",
+  "description": "主窗口、桌面歌词、灵动岛和聊天模式窗口的权限",
   "windows": [
     "main",
     "desktop",
-    "island"
+    "island",
+    "chat"
   ],
   "permissions": [
     "core:default",
@@ -14,6 +15,8 @@
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-fullscreen",
-    "core:window:allow-is-fullscreen"
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-close",
+    "core:window:allow-set-always-on-top"
   ]
 }

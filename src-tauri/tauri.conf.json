@@ -50,6 +50,19 @@
         "resizable": false,
         "focus": false,
         "visible": false
+      },
+      {
+        "label": "chat",
+        "create": false,
+        "title": "ingfy 聊天模式",
+        "width": 400,
+        "height": 720,
+        "minWidth": 260,
+        "minHeight": 320,
+        "center": true,
+        "decorations": false,
+        "resizable": true,
+        "visible": false
       }
     ],
     "security": {

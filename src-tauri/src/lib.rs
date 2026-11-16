@@ -133,6 +133,19 @@ async fn island_set(app: AppHandle, visible: bool, locked: bool) -> Result<bool,
     Ok(docked)
 }
 
+/// 聊天模式窗口显示 / 隐藏。第一次显示时才创建
+#[tauri::command]
+async fn chat_set(app: AppHandle, visible: bool) -> Result<(), String> {
+    if visible {
+        let win = ensure_window(&app, "chat")?;
+        win.show().map_err(|e| e.to_string())?;
+        let _ = win.set_focus();
+    } else if let Some(win) = app.get_webview_window("chat") {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// 改灵动岛窗口大小（逻辑像素）。保持水平居中位置和顶边不动，展开时往下长
 #[tauri::command]
 fn island_layout(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
@@ -693,13 +706,14 @@ fn tray_menu<R: tauri::Runtime, M: Manager<R>>(m: &M, en: bool) -> tauri::Result
     let show = MenuItem::with_id(m, "show", tr("显示主窗口", "Show ingfy"), true, None::<&str>)?;
     let desk = MenuItem::with_id(m, "desktop", tr("显示 / 隐藏桌面歌词", "Show / hide desktop lyrics"), true, None::<&str>)?;
     let island = MenuItem::with_id(m, "island", tr("显示 / 隐藏灵动岛", "Show / hide Dynamic Island"), true, None::<&str>)?;
+    let chat = MenuItem::with_id(m, "chat", tr("显示 / 隐藏聊天模式", "Show / hide chat view"), true, None::<&str>)?;
     let prev = MenuItem::with_id(m, "prev", tr("上一首", "Previous"), true, None::<&str>)?;
     let toggle = MenuItem::with_id(m, "toggle", tr("播放 / 暂停", "Play / pause"), true, None::<&str>)?;
     let next = MenuItem::with_id(m, "next", tr("下一首", "Next"), true, None::<&str>)?;
     let quit = MenuItem::with_id(m, "quit", tr("退出 ingfy", "Quit ingfy"), true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(m)?;
     let sep2 = PredefinedMenuItem::separator(m)?;
-    Menu::with_items(m, &[&show, &desk, &island, &sep1, &prev, &toggle, &next, &sep2, &quit])
+    Menu::with_items(m, &[&show, &desk, &island, &chat, &sep1, &prev, &toggle, &next, &sep2, &quit])
 }
 
 /// 前端切换语言时调用：记下语言，并把托盘菜单换成对应语言
@@ -727,6 +741,9 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             // 灵动岛开关存在前端设置里，交给主窗口切换（灵动岛窗口可能还没建）
             "island" => {
                 let _ = app.emit("island-toggle", ());
+            }
+            "chat" => {
+                let _ = app.emit("chat-toggle", ());
             }
             "prev" => control_async("previous"),
             "toggle" => control_async("toggle"),
@@ -1063,6 +1080,12 @@ pub fn run() {
                     api.prevent_close();
                     let _ = window.hide();
                 }
+                // 聊天窗口关掉只是藏起来，通知主窗口把设置里的开关也关上
+                if window.label() == "chat" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    let _ = window.app_handle().emit("chat-closed", ());
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -1085,6 +1108,7 @@ pub fn run() {
             set_desktop_visible,
             island_set,
             island_layout,
+            chat_set,
             desktop_fit,
             set_shortcuts,
             suspend_shortcuts,
