@@ -27,20 +27,49 @@ const SOURCE_NAME: Record<string, string> = { netease: t("网易云"), lrclib: "
 /** 换一个歌词：列出网易云和 LRCLIB 的候选，选中后这首歌以后都用它 */
 export function LyricPicker({ now, current, onPick, onClose }: Props) {
   const [list, setList] = useState<LyricOption[] | null>(null);
+  // 自动找的结果不对时，可以改歌名、歌手重新搜（比如去掉"(Live)"、换成原名）
+  const [title, setTitle] = useState(now.title);
+  const [artist, setArtist] = useState(now.artist);
+  const [query, setQuery] = useState({ title: now.title, artist: now.artist });
+
+  useEffect(() => {
+    setTitle(now.title);
+    setArtist(now.artist);
+    setQuery({ title: now.title, artist: now.artist });
+  }, [now.title, now.artist]);
 
   useEffect(() => {
     let alive = true;
-    invoke<LyricOption[]>("lyrics_options", { title: now.title, artist: now.artist, durationMs: now.durationMs })
+    setList(null);
+    invoke<LyricOption[]>("lyrics_options", { title: query.title, artist: query.artist, durationMs: now.durationMs })
       .then((l) => alive && setList(l))
       .catch(() => alive && setList([]));
     return () => {
       alive = false;
     };
-  }, [now.title, now.artist, now.durationMs]);
+  }, [query.title, query.artist, now.durationMs]);
+
+  const search = () => {
+    if (title.trim()) setQuery({ title: title.trim(), artist: artist.trim() });
+  };
 
   const auto = !current.source;
   return (
     <Sheet title={t("换一个歌词")} subtitle={`${now.title}，${now.artist}`} onClose={onClose}>
+      <form
+        className="picker-search"
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          search();
+        }}
+      >
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("歌名")} aria-label={t("歌名")} />
+        <input value={artist} onChange={(e) => setArtist(e.target.value)} placeholder={t("歌手")} aria-label={t("歌手")} />
+        <button type="submit" disabled={!title.trim()}>
+          {t("搜索")}
+        </button>
+      </form>
       <ol className="nl-list picker-list">
         <li>
           <button className={`nl-row${auto ? " is-on" : ""}`} onClick={() => onPick(null)} aria-current={auto || undefined}>

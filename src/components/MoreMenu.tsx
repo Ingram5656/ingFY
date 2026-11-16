@@ -65,7 +65,7 @@ export function MenuSwitch({ label, sub, on, onChange }: { label: string; sub?: 
 /**
  * 按住一直调：按下先走一步，停一下之后连续走。键盘（回车 / 空格）按一次走一步
  */
-function useRepeat(step: () => void) {
+export function useRepeat(step: () => void) {
   const fn = useRef(step);
   fn.current = step;
   const timer = useRef<number | undefined>(undefined);

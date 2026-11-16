@@ -95,14 +95,58 @@ async fn fetch_lyrics(
 
 /// 锁定后桌面歌词窗口鼠标穿透，只能从主窗口解锁
 #[tauri::command]
-fn set_desktop_locked(app: AppHandle, state: State<AppState>, locked: bool) -> Result<(), String> {
-    // 桌面歌词窗口还没建的话先记着，建的时候会照这个状态设
+fn set_desktop_locked(app: AppHandle, locked: bool) -> Result<(), String> {
+    lock_desktop(&app, locked)
+}
+
+/// 锁定 / 解锁桌面歌词：锁定后鼠标点穿、不能拖。窗口还没建的话先记着，建的时候会照这个状态设
+fn lock_desktop(app: &AppHandle, locked: bool) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("desktop") {
         win.set_ignore_cursor_events(locked)
             .map_err(|e| e.to_string())?;
     }
-    state.snapshot.lock().unwrap().desktop_locked = locked;
+    app.state::<AppState>().snapshot.lock().unwrap().desktop_locked = locked;
     app.emit("desktop-locked", locked).map_err(|e| e.to_string())
+}
+
+/// 托盘和快捷键用：锁着就解锁，没锁就锁上
+fn toggle_desktop_lock(app: &AppHandle) {
+    let locked = app.state::<AppState>().snapshot.lock().unwrap().desktop_locked;
+    let _ = lock_desktop(app, !locked);
+}
+
+/// 关掉主窗口时前端让它留在托盘还是直接退出
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+// ---------- 桌面歌词的位置：拖到哪下次就出现在哪 ----------
+
+fn desktop_pos_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("desktop-position.txt"))
+}
+
+fn save_desktop_pos(app: &AppHandle, x: i32, y: i32) {
+    let Some(path) = desktop_pos_path(app) else { return };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(path, format!("{x},{y}"));
+}
+
+/// 上次的位置。那块屏幕现在不在了（比如拔了副屏）就当没有
+fn saved_desktop_pos(app: &AppHandle, win: &WebviewWindow) -> Option<PhysicalPosition<i32>> {
+    let text = std::fs::read_to_string(desktop_pos_path(app)?).ok()?;
+    let (x, y) = text.trim().split_once(',')?;
+    let (x, y): (i32, i32) = (x.trim().parse().ok()?, y.trim().parse().ok()?);
+    let size = win.outer_size().ok()?;
+    let (cx, cy) = (x + size.width as i32 / 2, y + size.height as i32 / 2);
+    let on_screen = win.available_monitors().ok()?.iter().any(|m| {
+        let (p, s) = (m.position(), m.size());
+        cx >= p.x && cx < p.x + s.width as i32 && cy >= p.y && cy < p.y + s.height as i32
+    });
+    on_screen.then(|| PhysicalPosition::new(x, y))
 }
 
 /// 拾音灯的反应速度（0~100），后端平滑频谱时用
@@ -706,6 +750,7 @@ fn tray_menu<R: tauri::Runtime, M: Manager<R>>(m: &M, en: bool) -> tauri::Result
     let show = MenuItem::with_id(m, "show", tr("显示主窗口", "Show ingfy"), true, None::<&str>)?;
     let desk = MenuItem::with_id(m, "desktop", tr("显示 / 隐藏桌面歌词", "Show / hide desktop lyrics"), true, None::<&str>)?;
     let island = MenuItem::with_id(m, "island", tr("显示 / 隐藏灵动岛", "Show / hide Dynamic Island"), true, None::<&str>)?;
+    let lock = MenuItem::with_id(m, "lock", tr("锁定 / 解锁桌面歌词", "Lock / unlock desktop lyrics"), true, None::<&str>)?;
     let chat = MenuItem::with_id(m, "chat", tr("显示 / 隐藏聊天模式", "Show / hide chat view"), true, None::<&str>)?;
     let prev = MenuItem::with_id(m, "prev", tr("上一首", "Previous"), true, None::<&str>)?;
     let toggle = MenuItem::with_id(m, "toggle", tr("播放 / 暂停", "Play / pause"), true, None::<&str>)?;
@@ -713,7 +758,7 @@ fn tray_menu<R: tauri::Runtime, M: Manager<R>>(m: &M, en: bool) -> tauri::Result
     let quit = MenuItem::with_id(m, "quit", tr("退出 ingfy", "Quit ingfy"), true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(m)?;
     let sep2 = PredefinedMenuItem::separator(m)?;
-    Menu::with_items(m, &[&show, &desk, &island, &chat, &sep1, &prev, &toggle, &next, &sep2, &quit])
+    Menu::with_items(m, &[&show, &desk, &lock, &island, &chat, &sep1, &prev, &toggle, &next, &sep2, &quit])
 }
 
 /// 前端切换语言时调用：记下语言，并把托盘菜单换成对应语言
@@ -745,6 +790,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             "chat" => {
                 let _ = app.emit("chat-toggle", ());
             }
+            "lock" => toggle_desktop_lock(app),
             "prev" => control_async("previous"),
             "toggle" => control_async("toggle"),
             "next" => control_async("next"),
@@ -773,8 +819,9 @@ static SHORTCUTS: Mutex<Vec<(String, Shortcut)>> = Mutex::new(Vec::new());
 static SHORTCUTS_SUSPENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 默认组合：Ctrl+Alt+L 桌面歌词，Ctrl+Alt+P 播放/暂停，Ctrl+Alt+←/→ 上一首/下一首，Ctrl+Alt+K 收藏
-const DEFAULT_SHORTCUTS: [(&str, &str); 5] = [
+const DEFAULT_SHORTCUTS: [(&str, &str); 6] = [
     ("desktop", "Ctrl+Alt+KeyL"),
+    ("lock", "Ctrl+Alt+KeyU"),
     ("play", "Ctrl+Alt+KeyP"),
     ("previous", "Ctrl+Alt+ArrowLeft"),
     ("next", "Ctrl+Alt+ArrowRight"),
@@ -784,6 +831,7 @@ const DEFAULT_SHORTCUTS: [(&str, &str); 5] = [
 fn run_shortcut(app: &AppHandle, action: &str) {
     match action {
         "desktop" => toggle_desktop(app),
+        "lock" => toggle_desktop_lock(app),
         "play" => control_async("toggle"),
         "previous" => {
             let _ = app.emit("shortcut", "previous");
@@ -1047,6 +1095,10 @@ fn spawn_island_watcher(app: AppHandle) {
 /// 把桌面歌词窗口放到主屏幕底部居中
 fn place_desktop_window(app: &AppHandle) {
     let Some(win) = app.get_webview_window("desktop") else { return };
+    if let Some(pos) = saved_desktop_pos(app, &win) {
+        let _ = win.set_position(pos);
+        return;
+    }
     let (Ok(Some(monitor)), Ok(size)) = (win.primary_monitor(), win.outer_size()) else { return };
     let m_pos = monitor.position();
     let m_size = monitor.size();
@@ -1075,10 +1127,21 @@ pub fn run() {
                     window.state::<AppState>().island.lock().unwrap().last_move = Some(std::time::Instant::now());
                 }
             }
+            // 桌面歌词被拖动或改了大小：记下位置，下次打开还在这里
+            if window.label() == "desktop" {
+                if let tauri::WindowEvent::Moved(pos) = event {
+                    if window.is_visible().unwrap_or(false) {
+                        save_desktop_pos(window.app_handle(), pos.x, pos.y);
+                    }
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // 主窗口：留在托盘还是退出，由前端按设置决定（第一次会问一下）
                 if window.label() == "main" {
                     api.prevent_close();
-                    let _ = window.hide();
+                    if window.emit_to("main", "main-close-requested", ()).is_err() {
+                        let _ = window.hide();
+                    }
                 }
                 // 聊天窗口关掉只是藏起来，通知主窗口把设置里的开关也关上
                 if window.label() == "chat" {
@@ -1109,6 +1172,7 @@ pub fn run() {
             island_set,
             island_layout,
             chat_set,
+            quit_app,
             desktop_fit,
             set_shortcuts,
             suspend_shortcuts,

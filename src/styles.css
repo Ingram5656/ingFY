@@ -1363,3 +1363,36 @@ html[data-window="chat"]:has(.chat--dark), html[data-window="chat"]:has(.chat--d
   background: radial-gradient(closest-side, rgba(8,3,26,0.66), rgba(8,3,26,0.42) 60%, transparent); transition: opacity 0.6s ease; }
 .fs.has-lights .fs-lyrics::before { opacity: 1; }
 .mode-layer:has(.vinyl-menu) .vinyl-info { opacity: 0; pointer-events: none; }
+/* 没找到歌词时的"手动搜索"按钮 */
+.hint p { margin: 0; }
+.hint-btn { display: inline-flex; align-items: center; margin-top: 18px; height: 44px; padding: 0 22px; border: 0; border-radius: 999px;
+  color: #fff; font: inherit; font-size: 15px; cursor: pointer; transition: filter 0.2s ease, transform 0.18s var(--ease-apple); }
+.hint-btn:hover { filter: brightness(1.15); }
+.hint-btn:active { transform: scale(0.96); }
+.hint-btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.fs.is-ink .hint-btn { color: #1d1a16; }
+/* 换歌词：自己改歌名歌手重新搜 */
+.picker-search { display: flex; gap: 8px; margin: 0 4px 12px; }
+.picker-search input { flex: 1; min-width: 0; height: 42px; padding: 0 14px; border: 1px solid rgba(255,255,255,0.2); border-radius: 12px;
+  background: rgba(0,0,0,0.18); color: #fff; font: inherit; font-size: 14px; outline: none; }
+.picker-search input:focus { border-color: rgba(255,255,255,0.55); }
+.picker-search input::placeholder { color: rgba(255,255,255,0.45); }
+.picker-search button { flex-shrink: 0; height: 42px; padding: 0 18px; border: 0; border-radius: 12px; background: #fff; color: var(--ink);
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.picker-search button:disabled { opacity: 0.5; cursor: default; }
+/* 第一次打开：指一下小窗口按钮 */
+.tip-bubble { position: absolute; z-index: 5; right: 48px; top: 112px; width: 280px; box-sizing: border-box; padding: 16px 16px 12px; border-radius: 20px;
+  animation: tip-in 0.5s var(--ease-apple) both; }
+.tip-bubble::before { content: ""; position: absolute; top: -7px; right: var(--tip-x, 116px); width: 14px; height: 14px; rotate: 45deg;
+  background: inherit; border-left: 1px solid rgba(255,255,255,0.3); border-top: 1px solid rgba(255,255,255,0.3); }
+.tip-bubble p { margin: 0 0 10px; font-size: 14.5px; line-height: 1.5; }
+.tip-bubble button { float: right; height: 32px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; color: var(--ink);
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(-8px) scale(0.96); } }
+/* 关窗口时问一下 */
+.close-ask { display: flex; flex-direction: column; gap: 18px; padding: 4px 6px 6px; }
+.close-ask p { margin: 0; font-size: 15px; line-height: 1.6; color: rgba(255,255,255,0.85); }
+.close-ask-btns { display: flex; justify-content: flex-end; gap: 10px; }
+.close-ask small { font-size: 12.5px; color: rgba(255,255,255,0.55); }
+/* 设置里的整体延迟 */
+.st-stepper { flex-shrink: 0; }

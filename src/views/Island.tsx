@@ -136,7 +136,7 @@ export default function Island() {
   }, [settings.beat, open]);
 
   // ---------- 歌词 ----------
-  const lyricPos = position + (pref.offset ?? 0);
+  const lyricPos = position + (pref.offset ?? 0) + (settings.lyricDelay ?? 0);
   const lines = lyrics.lines;
   const idx = lyrics.synced ? findLineIndex(lines, lyricPos) : -1;
   const progress = lyrics.synced && idx >= 0 ? lineProgress(lines, idx, lyricPos, now?.durationMs ?? 0) : 0;

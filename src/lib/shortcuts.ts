@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 /** 可以设快捷键的动作，顺序就是设置里列出来的顺序 */
-export type ShortcutAction = "desktop" | "play" | "previous" | "next" | "like";
+export type ShortcutAction = "desktop" | "lock" | "play" | "previous" | "next" | "like";
 export const SHORTCUT_ACTIONS: { id: ShortcutAction; label: string }[] = [
   { id: "desktop", label: "显示 / 隐藏桌面歌词" },
+  { id: "lock", label: "锁定 / 解锁桌面歌词" },
   { id: "play", label: "播放 / 暂停" },
   { id: "previous", label: "上一首" },
   { id: "next", label: "下一首" },
@@ -15,6 +16,7 @@ export const SHORTCUT_ACTIONS: { id: ShortcutAction; label: string }[] = [
 export type ShortcutMap = Record<ShortcutAction, string>;
 export const DEFAULT_SHORTCUTS: ShortcutMap = {
   desktop: "Ctrl+Alt+KeyL",
+  lock: "Ctrl+Alt+KeyU",
   play: "Ctrl+Alt+KeyP",
   previous: "Ctrl+Alt+ArrowLeft",
   next: "Ctrl+Alt+ArrowRight",

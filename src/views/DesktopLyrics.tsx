@@ -24,10 +24,10 @@ export default function DesktopLyrics() {
   const position = usePosition(now);
   const pref = useLyricPref(now?.title ? trackKey(now) : "");
   const lyrics = useLyrics(now, pref);
-  // 每首歌单独的时间微调：正数让歌词提前
-  const lyricPos = position + (pref.offset ?? 0);
   const palette = useAlbumPalette(artwork);
   const [settings] = useSettings();
+  // 每首歌单独的时间微调加上整体延迟：正数让歌词提前
+  const lyricPos = position + (pref.offset ?? 0) + (settings.lyricDelay ?? 0);
   useApplySettings(settings);
   const spotify = useSpotify(now);
   const glowRef = useRef<HTMLDivElement>(null);

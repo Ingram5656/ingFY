@@ -69,7 +69,7 @@ export function useSegThumb(ref: RefObject<HTMLElement | null>, activeKey: strin
 }
 
 /** 鼠标/键盘一段时间没动就返回 true（ms 毫秒）；paused 时始终为 false。 */
-export function useIdle(ms: number, paused: boolean): boolean {
+export function useIdle(ms: number, paused: boolean, hold?: string): boolean {
   const [idle, setIdle] = useState(false);
   useEffect(() => {
     if (paused) {
@@ -77,18 +77,28 @@ export function useIdle(ms: number, paused: boolean): boolean {
       return;
     }
     let t = window.setTimeout(() => setIdle(true), ms);
-    const wake = () => {
+    // 鼠标停在 hold 这些元素上时不计时（正要点按钮时不会突然收起来）
+    const wake = (e: Event) => {
       setIdle(false);
       window.clearTimeout(t);
+      const el = e.target instanceof Element ? e.target : null;
+      if (hold && el?.closest(hold)) return;
       t = window.setTimeout(() => setIdle(true), ms);
+    };
+    // 鼠标移出窗口：很快收起
+    const leave = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => setIdle(true), 700);
     };
     const evs = ["mousemove", "mousedown", "wheel", "keydown", "touchstart", "pointerdown"] as const;
     evs.forEach((e) => window.addEventListener(e, wake, { passive: true }));
+    document.documentElement.addEventListener("mouseleave", leave);
     return () => {
       window.clearTimeout(t);
       evs.forEach((e) => window.removeEventListener(e, wake));
+      document.documentElement.removeEventListener("mouseleave", leave);
     };
-  }, [ms, paused]);
+  }, [ms, paused, hold]);
   return idle;
 }
 

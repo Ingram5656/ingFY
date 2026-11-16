@@ -122,6 +122,14 @@ export interface Settings {
   chatTheme: "light" | "dark" | "system";
   chatSplit: ChatSplit;
   chatAvatar: string;
+  /** 桌面歌词上次是开着的：下次启动接着显示 */
+  desktopOn: boolean;
+  /** 所有歌的歌词整体提前（正）/ 推后（负）多少毫秒，每首歌自己的微调叠在上面。蓝牙耳机慢半拍时用 */
+  lyricDelay: number;
+  /** 关掉主窗口时：第一次问一下，之后照选的来 */
+  closeAction: "ask" | "tray" | "quit";
+  /** 右上角"小窗口"的说明气泡看过了 */
+  tipWindowsSeen: boolean;
 }
 
 /** 一张唱片的外观设置：标签、花纹、颜色 */
@@ -193,6 +201,10 @@ export const DEFAULT_SETTINGS: Settings = {
   chatTheme: "light",
   chatSplit: "auto",
   chatAvatar: "",
+  desktopOn: false,
+  lyricDelay: 0,
+  closeAction: "ask",
+  tipWindowsSeen: false,
 };
 
 const KEY = "nige.settings";

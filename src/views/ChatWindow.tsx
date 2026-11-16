@@ -22,8 +22,8 @@ export default function ChatWindow() {
   const raw = usePosition(now);
   const pref = useLyricPref(now?.title ? trackKey(now) : "");
   const lyrics = useLyrics(now, pref);
-  const position = raw + (pref.offset ?? 0);
   const [settings, update] = useSettings();
+  const position = raw + (pref.offset ?? 0) + (settings.lyricDelay ?? 0);
   useApplySettings(settings);
   const dark = useDark(settings.chatTheme);
 

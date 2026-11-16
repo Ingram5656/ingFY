@@ -32,6 +32,7 @@ import { WindowsMenu } from "../components/WindowsMenu";
 import { Presence } from "../components/Presence";
 import { LyricPicker } from "../components/LyricPicker";
 import { ShareSheet } from "../components/ShareSheet";
+import { Sheet } from "../components/Sheet";
 import type { UpdateInfo } from "../components/SettingsPanel";
 import { t, tMsg, useLang } from "../lib/i18n";
 
@@ -180,10 +181,14 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   // 这首歌单独的歌词设置：时间偏移、手动选的歌词版本
   const pref = useLyricPref(track);
   const lyrics = useLyrics(now, pref);
-  const offset = pref.offset ?? 0;
+  const songOffset = pref.offset ?? 0;
   const palette = useAlbumPalette(artwork);
   const scale = useStageScale();
   const [settings, update] = useSettings();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  // 实际用的偏移 = 这首歌自己的微调 + 设置里的整体延迟
+  const offset = songOffset + (settings.lyricDelay ?? 0);
   useApplySettings(settings);
   const bgImage = useBackgroundImage();
   const bgVideo = useBackgroundVideo(settings.background === "video");
@@ -206,9 +211,31 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
 
   // 托盘或快捷键改了桌面歌词的显示状态，同步按钮
   useEffect(() => {
-    const un = listen<boolean>("desktop-visible", (e) => setDesktopVisible(e.payload));
+    const un = listen<boolean>("desktop-visible", (e) => {
+      setDesktopVisible(e.payload);
+      if (settingsRef.current.desktopOn !== e.payload) update({ desktopOn: e.payload });
+    });
+    // 上次关软件时桌面歌词开着：接着显示（位置后端会记住）
+    if (settingsRef.current.desktopOn) invoke("set_desktop_visible", { visible: true }).catch(() => {});
+    return () => void un.then((f) => f());
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 关主窗口：第一次问一下留在托盘还是退出，之后照选的来
+  const [closeAsk, setCloseAsk] = useState(false);
+  useEffect(() => {
+    const un = listen("main-close-requested", () => {
+      const a = settingsRef.current.closeAction;
+      if (a === "quit") void invoke("quit_app");
+      else if (a === "tray") void getCurrentWindow().hide();
+      else setCloseAsk(true);
+    });
     return () => void un.then((f) => f());
   }, []);
+  const closeWith = (a: "tray" | "quit") => {
+    update({ closeAction: a });
+    setCloseAsk(false);
+    if (a === "quit") void invoke("quit_app");
+    else void getCurrentWindow().hide();
+  };
   // 全局快捷键：收藏要用这里的 Spotify 状态；切歌时记下方向给唱片动画用
   const spotifyRef = useRef(spotify);
   spotifyRef.current = spotify;
@@ -244,8 +271,6 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
     void applyShortcuts(shortcutsOf(settings.shortcuts));
   }, [shortcutKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // 托盘里点了"显示 / 隐藏灵动岛"
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
   useEffect(() => {
     const un = listen("island-toggle", () => update({ islandOn: !settingsRef.current.islandOn }));
     return () => void un.then((f) => f());
@@ -290,7 +315,13 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const modeSegRef = useRef<HTMLDivElement>(null);
   const lightSegRef = useRef<HTMLDivElement>(null);
   // 3 秒没动鼠标就收起上下栏，只留中间；开着面板或菜单时不收
-  const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen || listOpen || moreOpen || winOpen || pickerOpen || shareOpen);
+  const tipWindows = !settings.tipWindowsSeen && !settingsOpen;
+  const idle = useIdle(
+    3000,
+    settingsOpen || vinylMenuOpen || searchOpen || listOpen || moreOpen || winOpen || pickerOpen || shareOpen || closeAsk || tipWindows,
+    // 鼠标停在这些按钮上时不收起来
+    ".fs-top, .fs-bar, .lib-search-btn, .vinyl-edit",
+  );
   const sleepFading = sleep.left !== null && sleep.left <= SLEEP_FADE_MS;
   // 上下栏收起再出现时也重新量一次滑块位置
   useSegThumb(modeSegRef, `${viewMode}|${idle}|${libraryAvailable}`);
@@ -437,6 +468,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
               onClick={() => {
                 setWinOpen((v) => !v);
                 setMoreOpen(false);
+                if (!settings.tipWindowsSeen) update({ tipWindowsSeen: true });
               }}
             >
               <WindowsIcon />
@@ -551,7 +583,14 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
                 <section className={`fs-lyrics${showLyrics && !lyrics3d ? "" : " is-hidden"}${layout === "lyrics" ? " is-solo" : ""}`} aria-live="polite" aria-hidden={!showLyrics || undefined}>
                   {lyrics.status === "loading" && <p className="hint">{t("正在找歌词…")}</p>}
                   {(lyrics.status === "none" || lyrics.status === "error") && now && (
-                    <p className="hint">{lyrics.status === "error" ? t("歌词加载失败，检查一下网络") : lyrics.instrumental ? t("纯音乐，没有歌词") : t("没找到这首歌的歌词")}</p>
+                    <div className="hint">
+                      <p>{lyrics.status === "error" ? t("歌词加载失败，检查一下网络") : lyrics.instrumental ? t("纯音乐，没有歌词") : t("没找到这首歌的歌词")}</p>
+                      {lyrics.status === "none" && !lyrics.instrumental && (
+                        <button className="hint-btn glass" onClick={() => setPickerOpen(true)}>
+                          {t("手动搜索歌词")}
+                        </button>
+                      )}
+                    </div>
                   )}
                   {lyrics.status === "ready" && !lyrics.synced && (
                     <div className="plain">{lines.map((l, i) => <p key={i}>{l.text}</p>)}</div>
@@ -571,6 +610,14 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
           )}
         </Presence>
 
+        {/* 第一次打开时指一下小窗口按钮在哪 */}
+        <Presence show={tipWindows && !winOpen}>
+          <div className="tip-bubble glass glass--thick" role="note">
+            <p>{t("桌面歌词、灵动岛和聊天模式在这里打开")}</p>
+            <button onClick={() => update({ tipWindowsSeen: true })}>{t("知道了")}</button>
+          </div>
+        </Presence>
+
         <Presence show={winOpen}>
           <WindowsMenu
             onClose={() => setWinOpen(false)}
@@ -588,7 +635,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
         <Presence show={moreOpen}>
           <MoreMenu
             onClose={() => setMoreOpen(false)}
-            offset={offset}
+            offset={songOffset}
             canAdjust={!!track && lyrics.status === "ready" && lyrics.synced}
             onOffset={(ms) => setLyricPref(track, { offset: Math.max(-10000, Math.min(10000, Math.round(ms / 100) * 100)) })}
             canPickLyrics={!!now?.title}
@@ -711,6 +758,23 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
             onLogout={spotify.logout}
             onClose={() => setSettingsOpen(false)}
           />
+        </Presence>
+
+        <Presence show={closeAsk} ms={260}>
+          <Sheet title={t("关掉窗口后")} onClose={() => setCloseAsk(false)}>
+            <div className="close-ask">
+              <p>{t("ingfy 可以留在托盘里，继续显示桌面歌词和灵动岛。想退出时，右键托盘图标选「退出 ingfy」。")}</p>
+              <div className="close-ask-btns">
+                <button className="st-btn" onClick={() => closeWith("quit")}>
+                  {t("直接退出")}
+                </button>
+                <button className="st-btn st-btn--primary" onClick={() => closeWith("tray")}>
+                  {t("留在托盘")}
+                </button>
+              </div>
+              <small>{t("以后可以在设置的「通用」里改")}</small>
+            </div>
+          </Sheet>
         </Presence>
 
         <Presence show={pickerOpen && !!now} ms={260}>

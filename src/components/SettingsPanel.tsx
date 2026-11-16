@@ -6,6 +6,7 @@ import { baseOf, withBase, lightOrderOf, downscaleImage, saveBackgroundImage } f
 import type { LightStyle } from "./Lights";
 import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
+import { useRepeat } from "./MoreMenu";
 import { COLOR_PRESETS, DEFAULT_BASE, deepTone, pickGradient } from "../lib/palette";
 import { deskScale, islandScale, lightPalette, lyricScale, thickScale } from "../lib/settings";
 import { Lights } from "./Lights";
@@ -158,6 +159,40 @@ function ShortcutsGroup({ settings, update }: { settings: Settings; update: (pat
 }
 
 /** 通用：开机自启、快捷键、版本与更新 */
+/** 整体歌词时间：按住 + / − 连续调，点中间的数字回到 0 */
+function DelayRow({ value, onChange }: { value: number; onChange: (ms: number) => void }) {
+  const ref = useRef(value);
+  ref.current = value;
+  const set = (ms: number) => {
+    const v = Math.max(-5000, Math.min(5000, Math.round(ms / 100) * 100));
+    ref.current = v;
+    onChange(v);
+  };
+  const minus = useRepeat(() => set(ref.current - 100));
+  const plus = useRepeat(() => set(ref.current + 100));
+  const sec = (value / 1000).toFixed(1);
+  const text = value === 0 ? t("准时") : value > 0 ? t("所有歌词提前 {s}s", { s: sec }) : t("所有歌词推后 {s}s", { s: sec.slice(1) });
+  return (
+    <div className="st-cell st-toggle">
+      <span className="st-option-text">
+        <span>{t("整体提前 / 推后")}</span>
+        <small>{text}</small>
+      </span>
+      <div className="mm-stepper st-stepper" role="group" aria-label={t("整体提前 / 推后")}>
+        <button aria-label={t("所有歌词推后 0.1 秒")} title={t("按住连续调")} {...minus}>
+          −
+        </button>
+        <button className="mm-reset" aria-label={t("恢复准时")} disabled={value === 0} onClick={() => set(0)}>
+          {t("{s} 秒", { s: value === 0 ? "0.0" : (value > 0 ? "+" : "") + sec })}
+        </button>
+        <button aria-label={t("所有歌词提前 0.1 秒")} title={t("按住连续调")} {...plus}>
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | null; settings: Settings; update: (patch: Partial<Settings>) => void }) {
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [info, setInfo] = useState<UpdateInfo | null>(initial ?? null);
@@ -243,6 +278,25 @@ function GeneralSection({ initial, settings, update }: { initial?: UpdateInfo | 
               ] as const
             ).map(([id, name]) => (
               <button key={id} role="radio" aria-checked={(settings.language ?? "system") === id} onClick={() => update({ language: id })}>
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Group>
+      <Group title={t("歌词时间")}>
+        <DelayRow value={settings.lyricDelay ?? 0} onChange={(ms) => update({ lyricDelay: ms })} />
+      </Group>
+      <Group title={t("关掉主窗口时")}>
+        <div className="st-cell">
+          <div className="st-seg" role="radiogroup" aria-label={t("关掉主窗口时")}>
+            {(
+              [
+                ["tray", t("留在托盘")],
+                ["quit", t("直接退出")],
+              ] as const
+            ).map(([id, name]) => (
+              <button key={id} role="radio" aria-checked={(settings.closeAction === "quit" ? "quit" : "tray") === id} onClick={() => update({ closeAction: id })}>
                 {name}
               </button>
             ))}
