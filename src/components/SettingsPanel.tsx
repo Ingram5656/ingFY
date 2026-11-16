@@ -907,11 +907,21 @@ export function SettingsPanel(p: Props) {
     ),
     lights: (
       <>
+        <Group>
+          <Toggle label={t("拾音灯")} on={s.lightsOn} onChange={(v) => update({ lightsOn: v })} />
+          {s.lightsOn && (
+            <>
+              <Toggle label={t("3D 模式")} sub={t("镜头转过去，灯和歌词都变成立体的")} on={s.light3d} onChange={(v) => update({ light3d: v })} />
+              <Toggle label={t("显示歌词")} on={s.showLyrics} onChange={(v) => update({ showLyrics: v })} />
+              <Toggle label={t("显示专辑信息")} on={s.showAlbum} onChange={(v) => update({ showAlbum: v })} />
+            </>
+          )}
+        </Group>
         <Group title={t("灯效")}>
           <div className="st-cell">
             <div className="st-fx" role="radiogroup" aria-label={t("灯效样式")}>
               {orderedStyles(s.lightOrder).map((l) => (
-                <button key={l.id} className="st-tile" role="radio" aria-checked={s.lightStyle === l.id} onClick={() => update({ lightStyle: l.id })}>
+                <button key={l.id} className="st-tile" role="radio" aria-checked={s.lightStyle === l.id} onClick={() => update({ lightStyle: l.id, lightsOn: true })}>
                   <span className="st-thumb st-thumb--fx">
                     <LightThumb id={l.id} palette={lightPal} />
                   </span>

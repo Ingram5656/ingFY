@@ -89,6 +89,7 @@ interface Props {
   update: (patch: Partial<Settings>) => void;
   lyricText: string;
   menuOpen: boolean;
+  onToggleMenu: () => void;
   onCloseMenu: () => void;
   /** 拖唱针时实时预览的位置（毫秒），null 表示松手 */
   onPreview: (ms: number | null) => void;
@@ -444,6 +445,14 @@ export function VinylView(p: Props) {
         <h1>{now?.title || t("没有在播放")}</h1>
         <p className="artist">{now?.artist || t("在 Spotify 或其他播放器里放一首歌")}</p>
         {now?.album && <p className="album">{now.album}</p>}
+        <button className="vinyl-edit glass" aria-expanded={p.menuOpen} onClick={p.onToggleMenu}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 3a9 9 0 0 1 8.5 6" />
+          </svg>
+          {t("自定义唱片")}
+        </button>
       </div>
 
       <Presence show={p.menuOpen}>

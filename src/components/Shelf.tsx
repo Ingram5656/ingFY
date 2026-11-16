@@ -37,6 +37,7 @@ interface Props {
   loginBusy: boolean;
   onLogin: () => void;
   searchOpen: boolean;
+  onOpenSearch: () => void;
   onCloseSearch: () => void;
 }
 
@@ -186,6 +187,16 @@ export function LibraryView(p: Props) {
 
   return (
     <>
+      {/* 没在搜时，搜索框的位置放一个按钮，点开就是搜索框 */}
+      <Presence show={!p.searchOpen}>
+        <button className="lib-search-btn glass" onClick={p.onOpenSearch}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" />
+          </svg>
+          {t(p.kind === "playlist" ? "搜索歌单" : "搜索专辑")}
+        </button>
+      </Presence>
       <Presence show={p.searchOpen}>
         <div className="lib-search glass" role="search">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

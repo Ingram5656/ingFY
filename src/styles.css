@@ -113,9 +113,6 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .seg-group { display: flex; gap: 2px; }
 .seg-group button { height: 44px; min-width: 72px; padding: 0 18px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; font-size: 15px; }
 .seg-group button.is-on { background: #fff; color: var(--ink); }
-/* 关掉拾音灯后，灯效选项变暗（点任意一个会重新打开） */
-.seg.is-off .seg-group { opacity: 0.45; }
-.seg.is-off .seg-group button.is-on { background: rgba(255,255,255,0.25); color: #fff; }
 .dl-glow.is-hidden { display: none; }
 .pill { display: flex; gap: 4px; padding: 4px; border-radius: 999px; }
 
@@ -628,7 +625,7 @@ html.calm .light, html.calm .dl-glow span { animation-name: breathe !important; 
 .fs-list:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .fs.is-idle .fs-list { transform: translateY(160px); opacity: 0; pointer-events: none; }
 
-.nl-panel { position: absolute; z-index: 4; right: 48px; bottom: 130px; width: 420px; height: 620px; box-sizing: border-box;
+.nl-panel { position: absolute; z-index: 4; right: 280px; bottom: 140px; width: 420px; height: 620px; box-sizing: border-box;
   display: flex; flex-direction: column; border-radius: 28px; padding: 18px 10px 10px 18px;
   transform-origin: 100% 100%; animation: nl-in 0.38s var(--ease-apple) both; }
 @keyframes nl-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
@@ -1327,3 +1324,42 @@ html[data-window="chat"]:has(.chat--dark), html[data-window="chat"]:has(.chat--d
 .st-chat-av--album { background: linear-gradient(160deg, #FFC08A, #FF7F8F 45%, #6F48C6); }
 .st-chat-av--me { background: linear-gradient(140deg, #A8D8FF, #6A8CF2); }
 .st-chat-av-actions { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+
+/* ===================== 2.4 体验整理 ===================== */
+/* 菜单里的开关行（小窗口、更多） */
+.mm-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; padding: 8px 12px; box-sizing: border-box;
+  border: 0; border-radius: 16px; background: transparent; color: #fff; font: inherit; text-align: left; cursor: pointer; transition: background-color 0.2s ease; }
+.mm-switch:hover { background: rgba(255,255,255,0.1); }
+.mm-knob { position: relative; flex-shrink: 0; width: 46px; height: 28px; border-radius: 999px; background: rgba(255,255,255,0.2); transition: background-color 0.25s ease; }
+.mm-knob::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25); transition: transform 0.3s var(--ease-apple); }
+.mm-switch[aria-checked="true"] .mm-knob { background: linear-gradient(135deg, var(--c1), var(--c5)); }
+.mm-switch[aria-checked="true"] .mm-knob::after { transform: translateX(18px); }
+.mm-sub { margin: -4px 0 2px 14px; padding-left: 10px; border-left: 2px solid rgba(255,255,255,0.14); }
+.mm-kbd { padding: 2px 8px; border-radius: 6px; background: rgba(255,255,255,0.12); font: 12px var(--font-latin); color: rgba(255,255,255,0.75); }
+.mm-stepper .mm-reset { min-width: 64px; }
+/* 小窗口按钮：有窗口开着时右上角一个小点 */
+.win-btn { position: relative; }
+.win-btn.has-dot-on::after { content: ""; position: absolute; right: 8px; top: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--c1);
+  box-shadow: 0 0 6px var(--c1); }
+/* 播放列表按钮进了播放条 */
+.fs-bar .list-btn.is-on { background: #fff; color: var(--ink); }
+/* 曲库：搜索框没打开时，那个位置放一个按钮 */
+.lib-search-btn { position: absolute; z-index: 3; left: 50%; top: 44px; translate: -50% 0; display: inline-flex; align-items: center; gap: 10px;
+  height: 48px; padding: 0 22px; border: 0; border-radius: 999px; color: rgba(255,255,255,0.85); font: inherit; font-size: 15px; cursor: pointer;
+  transition: transform 0.5s var(--ease-apple), opacity 0.4s ease, filter 0.2s ease; }
+.lib-search-btn:hover { filter: brightness(1.15); color: #fff; }
+.lib-search-btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.fs.is-idle .lib-search-btn { opacity: 0; transform: translateY(-20px); pointer-events: none; }
+/* 唱片：自定义按钮放在歌名下面 */
+.vinyl-edit { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; height: 40px; padding: 0 16px; border: 0;
+  border-radius: 999px; color: rgba(255,255,255,0.88); font: inherit; font-size: 14px; cursor: pointer; transition: filter 0.2s ease, opacity 0.4s ease; }
+.vinyl-edit:hover { filter: brightness(1.15); color: #fff; }
+.vinyl-edit:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.vinyl-edit[aria-expanded="true"] { background: #fff; color: var(--ink); }
+.fs.is-idle .vinyl-edit { opacity: 0; pointer-events: none; }
+/* 灯光压着歌词时，在歌词这一列后面压暗一点，字更好认 */
+.fs-lyrics::before { content: ""; position: absolute; z-index: -1; inset: -60px -40px -60px -80px; pointer-events: none; opacity: 0;
+  background: radial-gradient(closest-side, rgba(8,3,26,0.66), rgba(8,3,26,0.42) 60%, transparent); transition: opacity 0.6s ease; }
+.fs.has-lights .fs-lyrics::before { opacity: 1; }
+.mode-layer:has(.vinyl-menu) .vinyl-info { opacity: 0; pointer-events: none; }

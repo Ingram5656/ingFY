@@ -14,7 +14,7 @@ import { SeekBar } from "../components/SeekBar";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { VinylView } from "../components/Vinyl";
 import { markDirection } from "../lib/vinyl";
-import { DesktopLyricsIcon, GearIcon, HeartIcon, LockIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from "../components/Icons";
+import { GearIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from "../components/Icons";
 import { findLineIndex, lineProgress } from "../lib/lrc";
 import { mediaControl, useAlbumPalette, useLyrics, usePlayer } from "../lib/player";
 import { PlayheadProvider, usePlayhead, usePositionRef } from "../lib/playhead";
@@ -28,6 +28,7 @@ import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
 import { trackKey } from "../lib/types";
 import { SLEEP_FADE_MS, sleepLabel, useSleepTimer } from "../lib/sleep";
 import { MoreMenu } from "../components/MoreMenu";
+import { WindowsMenu } from "../components/WindowsMenu";
 import { Presence } from "../components/Presence";
 import { LyricPicker } from "../components/LyricPicker";
 import { ShareSheet } from "../components/ShareSheet";
@@ -192,6 +193,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const [searchOpen, setSearchOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [winOpen, setWinOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -255,11 +257,11 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
       .catch(() => {});
   }, []);
 
-  const toggleDesktop = () => {
-    const v = !desktopVisible;
+  const setDesktop = (v: boolean) => {
     setDesktopVisible(v);
     invoke("set_desktop_visible", { visible: v });
   };
+  const anyWindow = desktopVisible || settings.islandOn || settings.chatWindowOn;
 
   // 没连接 Spotify 时点爱心，直接打开设置去连接
   const onHeart = () =>
@@ -288,7 +290,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const modeSegRef = useRef<HTMLDivElement>(null);
   const lightSegRef = useRef<HTMLDivElement>(null);
   // 3 秒没动鼠标就收起上下栏，只留中间；开着面板或菜单时不收
-  const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen || listOpen || moreOpen || pickerOpen || shareOpen);
+  const idle = useIdle(3000, settingsOpen || vinylMenuOpen || searchOpen || listOpen || moreOpen || winOpen || pickerOpen || shareOpen);
   const sleepFading = sleep.left !== null && sleep.left <= SLEEP_FADE_MS;
   // 上下栏收起再出现时也重新量一次滑块位置
   useSegThumb(modeSegRef, `${viewMode}|${idle}|${libraryAvailable}`);
@@ -324,7 +326,13 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const showCover = bg === "cover" && artwork;
 
   return (
-    <div className={`fs${idle ? " is-idle" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}${clear ? " is-clear" : ""}`} style={{ "--base": base } as CSSProperties}>
+    <div
+      onDoubleClick={(e) => {
+        // 只认背景、空白处的双击，按钮、歌词、唱片上的不算
+        const el = e.target as HTMLElement;
+        if (el.matches(".fs, .fs-stage, .mode-layer, .fs-dim, .fs-paper, .light-layer, .light-dim, .light-2d, canvas")) fullscreen.toggle();
+      }}
+      className={`fs${idle ? " is-idle" : ""}${settings.lightsOn && !ink && !vinyl && !library ? " has-lights" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}${clear ? " is-clear" : ""}`} style={{ "--base": base } as CSSProperties}>
       {/* 背景层：铺满整个窗口 */}
       {(bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork)) && (
         <>
@@ -371,123 +379,67 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
             ))}
           </div>
           {viewMode === "lyrics" && (
-          <div className={`seg seg--lights glass${settings.lightsOn ? "" : " is-off"}`} role="group" aria-label={t("拾音灯")}>
-            {/* 拾音灯总开关，和灯效切换共用一条工具栏 */}
-            <button
-              className="seg-toggle"
-              role="switch"
-              aria-checked={settings.lightsOn}
-              aria-label={settings.lightsOn ? t("关闭拾音灯") : t("打开拾音灯")}
-              title={settings.lightsOn ? t("关闭拾音灯") : t("打开拾音灯")}
-              onClick={() => update({ lightsOn: !settings.lightsOn })}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <path d="M6 18V9M10 18V5M14 18v-7M18 18V8" />
-                {!settings.lightsOn && <path d="M4 4l16 16" />}
-              </svg>
-            </button>
-            <span className="seg-sep" aria-hidden="true" />
+          <div className="seg seg--lights glass" role="group" aria-label={t("拾音灯")}>
+            {/* 拾音灯：「关」和各种灯效放在同一组里，一次只能选一个 */}
             <div ref={lightSegRef} className="seg-group" role="radiogroup" aria-label={t("拾音灯效果")} onClickCapture={reorder.onClickCapture}>
               <span className="seg-thumb" aria-hidden="true" />
-              {lightOrder.map((id) => (
-                <button
-                  key={id}
-                  data-seg
-                  data-reorder={id}
-                  role="radio"
-                  aria-checked={settings.lightStyle === id}
-                  className={settings.lightStyle === id ? "is-on" : ""}
-                  title={t("拖动可以调整顺序")}
-                  onClick={() => update({ lightStyle: id, lightsOn: true })}
-                  {...reorder.itemProps}
-                >
-                  {t(STYLE_LABEL[id])}
-                </button>
-              ))}
-            </div>
-            {/* 3D 模式：镜头转过去，灯、场景和歌词都变成立体的 */}
-            <button
-              className={`seg-3d${settings.light3d && settings.lightsOn ? " is-on" : ""}`}
-              role="switch"
-              aria-checked={settings.light3d && settings.lightsOn}
-              aria-disabled={!settings.lightsOn}
-              aria-label={t(settings.light3d ? "关闭 3D 模式" : "打开 3D 模式")}
-              title={settings.lightsOn ? t(settings.light3d ? "关闭 3D 模式" : "打开 3D 模式") : t("打开拾音灯后才能用 3D 模式")}
-              onClick={() => settings.lightsOn && update({ light3d: !settings.light3d })}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 2.8 20 7.4v9.2L12 21.2 4 16.6V7.4z" />
-                <path d="M4 7.4 12 12l8-4.6M12 12v9.2" />
-              </svg>
-              <span>3D</span>
-            </button>
-            <span className="seg-sep" aria-hidden="true" />
-            {/* 歌词、专辑信息的显示开关。拾音灯关着时不能关（不然画面就空了），强制都显示 */}
-            <div className="seg-vis" role="group" aria-label={t("显示内容")}>
-              {(
-                [
-                  ["showLyrics", t("歌词"), <LyricsGlyph key="l" />],
-                  ["showAlbum", t("专辑信息"), <AlbumGlyph key="a" />],
-                ] as const
-              ).map(([k, label, icon]) => {
-                const on = !settings.lightsOn || settings[k];
+              <button data-seg role="radio" aria-checked={!settings.lightsOn} className={settings.lightsOn ? "" : "is-on"} onClick={() => update({ lightsOn: false })}>
+                {t("关")}
+              </button>
+              {lightOrder.map((id) => {
+                const on = settings.lightsOn && settings.lightStyle === id;
                 return (
                   <button
-                    key={k}
-                    className={`seg-vis-btn${on ? " is-on" : ""}`}
-                    role="switch"
+                    key={id}
+                    data-seg
+                    data-reorder={id}
+                    role="radio"
                     aria-checked={on}
-                    aria-disabled={!settings.lightsOn}
-                    aria-label={t(on ? "隐藏{x}" : "显示{x}", { x: t(label) })}
-                    title={settings.lightsOn ? t(on ? "隐藏{x}" : "显示{x}", { x: t(label) }) : t("打开拾音灯后才能隐藏{x}", { x: t(label) })}
-                    onClick={() => settings.lightsOn && update({ [k]: !settings[k] } as Partial<typeof settings>)}
+                    className={on ? "is-on" : ""}
+                    title={t("拖动可以调整顺序")}
+                    onClick={() => update({ lightStyle: id, lightsOn: true })}
+                    {...reorder.itemProps}
                   >
-                    {icon}
+                    {t(STYLE_LABEL[id])}
                   </button>
                 );
               })}
             </div>
+            {/* 3D 模式：镜头转过去，灯、场景和歌词都变成立体的。灯关着时用不了，就不显示 */}
+            {settings.lightsOn && (
+              <>
+                <span className="seg-sep" aria-hidden="true" />
+                <button
+                  className={`seg-3d${settings.light3d ? " is-on" : ""}`}
+                  role="switch"
+                  aria-checked={settings.light3d}
+                  aria-label={t(settings.light3d ? "关闭 3D 模式" : "打开 3D 模式")}
+                  title={t(settings.light3d ? "关闭 3D 模式" : "打开 3D 模式")}
+                  onClick={() => update({ light3d: !settings.light3d })}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 2.8 20 7.4v9.2L12 21.2 4 16.6V7.4z" />
+                    <path d="M4 7.4 12 12l8-4.6M12 12v9.2" />
+                  </svg>
+                  <span>3D</span>
+                </button>
+              </>
+            )}
           </div>
           )}
           <div className="pill glass">
-            {library && (
-              <button
-                className="ibtn"
-                aria-label={searchOpen ? t("关闭搜索") : t("搜索")}
-                aria-pressed={searchOpen}
-                onClick={() => setSearchOpen((v) => !v)}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="M20 20l-3.5-3.5" />
-                </svg>
-              </button>
-            )}
-            {vinyl && (
-              <button
-                className="ibtn"
-                aria-label={t("自定义唱片")}
-                aria-expanded={vinylMenuOpen}
-                aria-pressed={vinylMenuOpen}
-                onClick={() => setVinylMenuOpen((v) => !v)}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 3a9 9 0 0 1 8.5 6" />
-                </svg>
-              </button>
-            )}
-            <button className="ibtn" aria-label={desktopVisible ? t("隐藏桌面歌词") : t("显示桌面歌词")} aria-pressed={desktopVisible} onClick={toggleDesktop}>
-              <DesktopLyricsIcon />
-            </button>
             <button
-              className="ibtn"
-              aria-label={desktopLocked ? t("解锁桌面歌词") : t("锁定桌面歌词")}
-              aria-pressed={desktopLocked}
-              onClick={() => invoke("set_desktop_locked", { locked: !desktopLocked })}
+              className={`ibtn win-btn${anyWindow ? " has-dot-on" : ""}`}
+              aria-label={t("小窗口")}
+              title={t("桌面歌词、灵动岛、聊天模式")}
+              aria-expanded={winOpen}
+              aria-pressed={winOpen}
+              onClick={() => {
+                setWinOpen((v) => !v);
+                setMoreOpen(false);
+              }}
             >
-              <LockIcon open={!desktopLocked} />
+              <WindowsIcon />
             </button>
             <button
               className={`ibtn more-btn${sleep.mode !== "off" ? " has-badge" : ""}`}
@@ -495,7 +447,10 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
               aria-expanded={moreOpen}
               aria-pressed={moreOpen}
               title={sleep.mode !== "off" ? sleepLabel(sleep.mode, sleep.left) : t("更多")}
-              onClick={() => setMoreOpen((v) => !v)}
+              onClick={() => {
+                setMoreOpen((v) => !v);
+                setWinOpen(false);
+              }}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <circle cx="5.5" cy="12" r="1.7" />
@@ -523,6 +478,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
                 loginBusy={spotify.busy}
                 onLogin={spotify.login}
                 searchOpen={searchOpen && !leaving}
+                onOpenSearch={() => setSearchOpen(true)}
                 onCloseSearch={() => setSearchOpen(false)}
               />
             ) : key === "vinyl" ? (
@@ -536,6 +492,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
               synced={lyrics.synced}
               offset={offset}
               menuOpen={vinylMenuOpen}
+              onToggleMenu={() => setVinylMenuOpen((v) => !v)}
               onCloseMenu={() => setVinylMenuOpen(false)}
             />
             ) : (
@@ -614,6 +571,20 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
           )}
         </Presence>
 
+        <Presence show={winOpen}>
+          <WindowsMenu
+            onClose={() => setWinOpen(false)}
+            desktop={desktopVisible}
+            onDesktop={setDesktop}
+            locked={desktopLocked}
+            onLocked={(v) => invoke("set_desktop_locked", { locked: v })}
+            island={settings.islandOn}
+            onIsland={(v) => update({ islandOn: v })}
+            chat={settings.chatWindowOn}
+            onChat={(v) => update({ chatWindowOn: v })}
+          />
+        </Presence>
+
         <Presence show={moreOpen}>
           <MoreMenu
             onClose={() => setMoreOpen(false)}
@@ -633,25 +604,24 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
             sleep={sleep.mode}
             sleepLeft={sleepLabel(sleep.mode, sleep.left)}
             onSleep={sleep.start}
+            view={
+              viewMode === "lyrics" && settings.lightsOn
+                ? {
+                    showLyrics: settings.showLyrics,
+                    showAlbum: settings.showAlbum,
+                    onLyrics: (v) => update({ showLyrics: v }),
+                    onAlbum: (v) => update({ showAlbum: v }),
+                  }
+                : null
+            }
+            fullscreen={fullscreen.full}
+            onFullscreen={() => {
+              setMoreOpen(false);
+              fullscreen.toggle();
+            }}
           />
         </Presence>
 
-        {/* 右下角：播放列表（正在播放的专辑 / 歌单里的所有歌） */}
-        <button
-          className={`fs-list glass${listOpen ? " is-on" : ""}`}
-          aria-label={listOpen ? t("关闭播放列表") : t("播放列表")}
-          title={t("播放列表")}
-          aria-pressed={listOpen}
-          aria-expanded={listOpen}
-          onClick={() => setListOpen((v) => !v)}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 6h11M4 11h11M4 16h7" />
-            <path d="M18 9v8.5" />
-            <circle cx="16" cy="17.5" r="2" />
-            <path d="M18 9l3-1" />
-          </svg>
-        </button>
         <Presence show={listOpen}>
         <NowListPanel
           open
@@ -663,23 +633,6 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
           currentTitle={now?.title ?? ""}
         />
         </Presence>
-
-        {/* 左下角：全屏（无边框铺满屏幕），Esc 退出 */}
-        <button
-          className="fs-full glass"
-          aria-label={fullscreen.full ? t("退出全屏") : t("全屏")}
-          title={fullscreen.full ? t("退出全屏（Esc）") : t("全屏")}
-          aria-pressed={fullscreen.full}
-          onClick={fullscreen.toggle}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            {fullscreen.full ? (
-              <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
-            ) : (
-              <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
-            )}
-          </svg>
-        </button>
 
         <footer className="fs-bar glass">
           <div className="controls">
@@ -708,17 +661,41 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
             </button>
           </div>
           <LiveSeekBar duration={now?.durationMs ?? 0} />
+          {/* 不是在 Spotify 播放时收藏用不了，就不显示（没连接时点它去连接） */}
+          {!heartDisabled && (
+            <button
+              className={`ibtn heart${spotify.liked ? " is-liked" : ""}`}
+              aria-label={!spotify.account.loggedIn ? t("连接 Spotify 后可收藏") : spotify.liked ? t("从 Spotify 收藏中移除") : t("收藏到 Spotify")}
+              aria-pressed={!!spotify.liked}
+              onClick={onHeart}
+            >
+              <HeartIcon filled={!!spotify.liked} />
+            </button>
+          )}
           <button
-            className={`ibtn heart${spotify.liked ? " is-liked" : ""}`}
-            aria-label={!spotify.account.loggedIn ? t("连接 Spotify 后可收藏") : spotify.liked ? t("从 Spotify 收藏中移除") : t("收藏到 Spotify")}
-            aria-pressed={!!spotify.liked}
-            disabled={heartDisabled}
-            title={heartDisabled ? t("当前不是在 Spotify 播放") : undefined}
-            onClick={onHeart}
+            className={`ibtn list-btn${listOpen ? " is-on" : ""}`}
+            aria-label={listOpen ? t("关闭播放列表") : t("播放列表")}
+            title={t("播放列表")}
+            aria-pressed={listOpen}
+            aria-expanded={listOpen}
+            onClick={() => setListOpen((v) => !v)}
           >
-            <HeartIcon filled={!!spotify.liked} />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 6h11M4 11h11M4 16h7" />
+              <path d="M18 9v8.5" />
+              <circle cx="16" cy="17.5" r="2" />
+              <path d="M18 9l3-1" />
+            </svg>
           </button>
         </footer>
+
+        <KeyControls
+          enabled={!settingsOpen && !pickerOpen && !shareOpen}
+          lines={lyrics.synced ? lines : null}
+          offset={offset}
+          duration={now?.durationMs ?? 0}
+          onFullscreen={fullscreen.toggle}
+        />
 
         <Presence show={settingsOpen} ms={260}>
           <SettingsPanel
@@ -767,20 +744,51 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   );
 }
 
-function LyricsGlyph() {
+function WindowsIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
-      <path d="M4 6.5h16M4 12h11M4 17.5h14" />
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="13" height="10" rx="2.5" />
+      <rect x="11" y="10" width="10" height="10" rx="2.5" fill="currentColor" fillOpacity="0.18" />
     </svg>
   );
 }
 
-function AlbumGlyph() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
-      <circle cx="12" cy="12" r="4" />
-      <circle cx="12" cy="12" r="0.8" fill="currentColor" />
-    </svg>
-  );
+/**
+ * 主窗口的键盘操作：空格播放 / 暂停，← → 快退快进 5 秒，↑ ↓ 跳到上一句 / 下一句歌词，F11 全屏。
+ * 输入框里、或者焦点在按钮滑块上时交给它们自己处理。开着设置、换歌词、分享这些面板时不管。
+ */
+function KeyControls(p: { enabled: boolean; lines: LyricLine[] | null; offset: number; duration: number; onFullscreen: () => void }) {
+  const playhead = usePlayhead();
+  const latest = useRef({ ...p, playhead });
+  latest.current = { ...p, playhead };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const { enabled, lines, offset, duration, onFullscreen, playhead: ph } = latest.current;
+      if (e.key === "F11") {
+        e.preventDefault();
+        onFullscreen();
+        return;
+      }
+      if (!enabled || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey || e.repeat && e.key === " ") return;
+      const el = e.target as HTMLElement;
+      if (el.closest("input, textarea, select, [contenteditable='true'], [role='slider'], [role='dialog']")) return;
+      if (e.key === " ") {
+        if (el.closest("button, [role='button'], [role='switch'], [role='radio']")) return;
+        e.preventDefault();
+        mediaControl("toggle");
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        if (duration <= 0 || el.closest("[role='radiogroup']")) return;
+        e.preventDefault();
+        ph.seek(Math.max(0, Math.min(duration, ph.position + (e.key === "ArrowRight" ? 5000 : -5000))));
+      } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && lines?.length) {
+        e.preventDefault();
+        const idx = findLineIndex(lines, ph.position + offset);
+        const next = Math.max(0, Math.min(lines.length - 1, idx + (e.key === "ArrowDown" ? 1 : -1)));
+        ph.seek(Math.max(0, lines[next].time - offset));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return null;
 }

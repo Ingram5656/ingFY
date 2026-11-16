@@ -136,6 +136,11 @@ export default function DesktopLyrics() {
         <button className="ibtn" aria-label={t("锁定桌面歌词")} onClick={() => invoke("set_desktop_locked", { locked: true })}>
           <LockIcon size={18} />
         </button>
+        <button className="ibtn" aria-label={t("关闭桌面歌词")} title={t("关闭桌面歌词")} onClick={() => invoke("set_desktop_visible", { visible: false })}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
       </div>
 
       <div className="dl-bar glass" data-tauri-drag-region>

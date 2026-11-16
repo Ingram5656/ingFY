@@ -490,4 +490,18 @@ export const EN: Record<string, string> = {
   "前奏中…": "Intro…",
   "轮到你唱的时候，歌词会先出现在这里": "Your next line shows up here before it's sent",
   "发送": "Send",
+  // ---------- 2.4 体验整理 ----------
+  "小窗口": "Mini windows",
+  "桌面歌词、灵动岛、聊天模式": "Desktop lyrics, Dynamic Island, chat view",
+  "浮在所有窗口最上面": "Floats above all other windows",
+  "锁定后不能拖动，鼠标可以点穿": "Can't be dragged when locked, and clicks pass through",
+  "3D 模式": "3D mode",
+  "镜头转过去，灯和歌词都变成立体的": "The camera swings round and the lights and lyrics turn 3D",
+  "显示歌词": "Show lyrics",
+  "显示专辑信息": "Show album info",
+  "按住连续调": "Hold to keep adjusting",
+  "{s} 秒": "{s}s",
+  "搜索歌单": "Search playlists",
+  "搜索专辑": "Search albums",
+  "关闭桌面歌词": "Close desktop lyrics",
 };

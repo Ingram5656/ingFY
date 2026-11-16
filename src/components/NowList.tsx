@@ -199,7 +199,7 @@ export function NowListPanel(p: Props) {
           <span className="nl-cover nl-cover--empty" aria-hidden="true" />
         )}
         <div className="nl-title">
-          <small>{data ? t(data.kind === "album" ? "正在播放的专辑" : data.kind === "queue" ? "正在播放的队列" : "正在播放的歌单") : t("播放列表")}</small>
+          {data && <small>{t(data.kind === "album" ? "正在播放的专辑" : data.kind === "queue" ? "正在播放的队列" : "正在播放的歌单")}</small>}
           <strong>{data?.title || t("播放列表")}</strong>
           {data && (
             <span>
