@@ -141,6 +141,9 @@ export class Scene3D {
   private drops: Drop[] = [];
   private seed = Math.floor(Math.random() * 1e5);
   private layer: HTMLCanvasElement | null = null;
+  /** 一批发光用的两张小画布（见 glowPass） */
+  private glowA: HTMLCanvasElement | null = null;
+  private glowB: HTMLCanvasElement | null = null;
   private layerK = -1;
   private layerN = 0;
   private mt: Mountain[] | null = null;
@@ -175,8 +178,8 @@ export class Scene3D {
 
   /** 画布的 CSS 尺寸（窗口像素）和舞台的缩放比例变了 */
   resize(cssW: number, cssH: number, stageScale: number) {
-    // 4K 全屏时按原分辨率画太费，总像素封顶在 2560×1440 左右
-    const dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(3.7e6 / Math.max(1, cssW * cssH)));
+    // 4K、2.5K 全屏时按原分辨率画太费，总像素封顶在 2.6M 左右（约 2150×1210）；画面本身大多是光和模糊，看不出差别
+    const dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(2.6e6 / Math.max(1, cssW * cssH)));
     const bw = Math.max(1, Math.round(cssW * dpr));
     const bh = Math.max(1, Math.round(cssH * dpr));
     if (this.canvas.width !== bw || this.canvas.height !== bh) {
@@ -335,6 +338,39 @@ export class Scene3D {
         return [cx + x1 * s, cy - y2 * s, z2, s];
       },
     };
+  }
+  /**
+   * 一次画完一批发光：形状先画到 1/4 大小的小画布上，在小画布上整体模糊一次，再放大叠回来。
+   * 代替给几十上百个形状各自加 shadowBlur——那样每个形状都要单独模糊一遍，是 3D 模式最费的地方。
+   * blurPx 和 shadowBlur 的数值是一个意思
+   */
+  private glowPass(draw: (q: G) => void, blurPx: number) {
+    const f = 0.25;
+    const w = Math.max(1, Math.round(this.canvas.width * f));
+    const h = Math.max(1, Math.round(this.canvas.height * f));
+    const A = (this.glowA ??= document.createElement("canvas"));
+    const B = (this.glowB ??= document.createElement("canvas"));
+    for (const c of [A, B])
+      if (c.width !== w || c.height !== h) {
+        c.width = w;
+        c.height = h;
+      }
+    const qa = A.getContext("2d")!;
+    qa.setTransform(1, 0, 0, 1, 0, 0);
+    qa.clearRect(0, 0, w, h);
+    qa.setTransform(this.px * f, 0, 0, this.px * f, -this.x0 * this.px * f, -this.y0 * this.px * f);
+    draw(qa);
+    const qb = B.getContext("2d")!;
+    qb.setTransform(1, 0, 0, 1, 0, 0);
+    qb.clearRect(0, 0, w, h);
+    qb.filter = `blur(${((blurPx / 2) * this.px * f).toFixed(2)}px)`;
+    qb.drawImage(A, 0, 0);
+    qb.filter = "none";
+    const g = this.g;
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(B, 0, 0, this.canvas.width, this.canvas.height);
+    g.restore();
   }
   /** 只画某个形状的外发光（等于 CSS 的 box-shadow）：形状本身不画，光只落在形状外面 */
   private outerGlow(path: (dx: number) => void, color: string, blurPx: number) {
@@ -552,22 +588,23 @@ export class Scene3D {
       const A = rowA(r) * A0;
       const lit = Math.exp(-((r - sweepR) ** 2) / 0.9) * sweepA;
       if (A < 0.004) continue;
-      // 2D 里每根柱子外面有一圈同色的光（最前面两排有）
-      if (r < 2)
-        for (let i = 0; i < N; i++) {
-          const h = hOf(r, i);
-          const xa = X(i) - BW / 2;
-          const xb = X(i) + BW / 2;
-          const c = [cam.p(xa, Y0, z0), cam.p(xb, Y0, z0), cam.p(xb, Y0 + h, z0), cam.p(xa, Y0 + h, z0)];
-          this.outerGlow(
-            (dx) => {
-              c.forEach((p, q) => (q ? g.lineTo(p[0] + dx, p[1]) : g.moveTo(p[0] + dx, p[1])));
-              g.closePath();
-            },
-            this.palAt(this.step(i, N), 0.6 * A * (r ? 0.5 : 1)),
-            24,
-          );
-        }
+      // 2D 里每根柱子外面有一圈同色的光：最前面两排的光一次画完，垫在这两排柱子下面
+      if (r === Math.min(1, rows.length - 1))
+        this.glowPass((q) => {
+          for (let rr = r; rr >= 0; rr--) {
+            const zz = rr * GAPZ * k;
+            const AA = rowA(rr) * A0;
+            for (let i = 0; i < N; i++) {
+              const h = hOf(rr, i);
+              const xa = X(i) - BW / 2;
+              const xb = X(i) + BW / 2;
+              q.fillStyle = this.palAt(this.step(i, N), 0.6 * AA * (rr ? 0.5 : 1));
+              q.beginPath();
+              poly(q, [cam.p(xa, Y0, zz), cam.p(xb, Y0, zz), cam.p(xb, Y0 + h, zz), cam.p(xa, Y0 + h, zz)]);
+              q.fill();
+            }
+          }
+        }, 24);
       for (let q = 0; q < N; q++) {
         const i = leftFar ? q : N - 1 - q;
         const h = hOf(r, i);
@@ -866,6 +903,19 @@ export class Scene3D {
     }
     arms.sort((p, q) => q.z - p.z);
     g.lineCap = "round";
+    // 每根灯的光一次画完，垫在灯下面
+    this.glowPass((q) => {
+      q.lineCap = "round";
+      q.globalAlpha = GA;
+      for (const m of arms) {
+        q.strokeStyle = this.palAt(m.u, 1);
+        q.lineWidth = (AW * (m.A[3] + m.B[3])) / 2;
+        q.beginPath();
+        q.moveTo(m.A[0], m.A[1]);
+        q.lineTo(m.B[0], m.B[1]);
+        q.stroke();
+      }
+    }, 12);
     let planetDone = k < 0.03;
     for (const m of arms) {
       if (!planetDone && m.z < zc) {
@@ -877,8 +927,6 @@ export class Scene3D {
       const gr = g.createLinearGradient(m.A[0], m.A[1], m.B[0], m.B[1]);
       gr.addColorStop(0, this.palAt(m.u, 1));
       gr.addColorStop(1, "rgba(255,255,255,0.85)");
-      g.shadowColor = this.palAt(m.u, 1);
-      g.shadowBlur = 12 * this.px;
       g.strokeStyle = gr;
       g.lineWidth = (AW * (m.A[3] + m.B[3])) / 2;
       g.beginPath();
@@ -1033,6 +1081,29 @@ export class Scene3D {
       if (A < 0.004) continue;
       const b = this.levels("wave", N, r * 0.09, now);
       const z = r * GAPZ * k;
+      // 最前面三排的光一次画完，垫在这三排下面
+      if (r === Math.min(2, (k > 0.01 ? ROWS : 1) - 1))
+        this.glowPass((q) => {
+          q.lineCap = "round";
+          for (let rr = r; rr >= 0; rr--) {
+            const AA = (rr === 0 ? 1 : k * Math.pow(1 - rr / ROWS, 1.3)) * A0;
+            const bb = rr === r ? b : this.levels("wave", N, rr * 0.09, now);
+            const zz = rr * GAPZ * k;
+            for (let i = 0; i < N; i++) {
+              const x = X0 + i * DX;
+              const h = Math.max(TH + 1, Math.max(0.04, bb[i]) * AREA);
+              const top = cam.p(x, CY + h / 2 - TH / 2, zz);
+              const bot = cam.p(x, CY - h / 2 + TH / 2, zz);
+              q.globalAlpha = AA;
+              q.strokeStyle = this.palAt(this.step(i, N), rr ? 0.5 : 1);
+              q.lineWidth = TH * cam.p(x, CY, zz)[3];
+              q.beginPath();
+              q.moveTo(top[0], top[1]);
+              q.lineTo(bot[0], bot[1]);
+              q.stroke();
+            }
+          }
+        }, 18);
       for (let i = 0; i < N; i++) {
         const x = X0 + i * DX;
         const h = Math.max(TH + 1, Math.max(0.04, b[i]) * AREA);
@@ -1053,10 +1124,6 @@ export class Scene3D {
         gr.addColorStop(1, `rgba(255,255,255,${0.7 * (1 - 0.92 * k)})`);
         g.save();
         g.globalAlpha = A;
-        if (r < 3) {
-          g.shadowColor = this.palAt(u, r ? 0.5 : 1);
-          g.shadowBlur = 18 * this.px;
-        }
         g.strokeStyle = gr;
         g.lineWidth = TH * mid[3];
         g.beginPath();

@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /**
  * 订阅后端推来的频谱（64 段，低频在前，0~1）。
@@ -39,10 +40,37 @@ export function responseCoef(): { attack: number; release: number } {
   return { attack: 0.35 + (response / 100) * 0.6, release: 0.16 * 2.8 ** ((response - 50) / 50) };
 }
 
+/**
+ * 这个窗口现在看不看得见。后端只要还有一个窗口开着就会推频谱，
+ * 比如主窗口缩到托盘、只开着桌面歌词时，主窗口也会收到——看不见的窗口就别跟着更新灯了
+ */
+let active = true;
+let watching = false;
+function watchWindow() {
+  if (watching) return;
+  watching = true;
+  const w = getCurrentWindow();
+  const check = () => {
+    Promise.all([w.isVisible(), w.isMinimized()]).then(
+      ([v, m]) => (active = v && !m),
+      () => {},
+    );
+  };
+  check();
+  setInterval(check, 500);
+  document.addEventListener("visibilitychange", check);
+}
+export function windowActive(): boolean {
+  watchWindow();
+  return active && !document.hidden;
+}
+
 export function onAudioLevels(fn: Fn): () => void {
+  watchWindow();
   if (!started) {
     started = true;
     listen<number[]>("audio-levels", (e) => {
+      if (!windowActive()) return;
       const bands = e.payload.map((v) => shapeLevel(v / 255));
       subs.forEach((f) => f(bands));
     });

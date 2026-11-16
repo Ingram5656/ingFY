@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { LightStyle } from "./Lights";
-import { onAudioLevels } from "../lib/audio";
+import { onAudioLevels, windowActive } from "../lib/audio";
 import { usePositionRef } from "../lib/playhead";
 import { BRUSH, Scene3D, type SceneProps } from "../lib/scene3d";
 import type { LyricLine } from "../lib/types";
@@ -82,9 +82,14 @@ export function Lights3D(p: Props) {
     const off = onAudioLevels((b) => scene.pushBands(b));
     let raf = 0;
     let flat = false;
+    let lastDraw = 0;
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
-      if (document.hidden) return;
+      // 窗口藏到托盘、最小化时不画
+      if (document.hidden || !windowActive()) return;
+      // 最多每秒 60 帧：高刷屏（144、165、240Hz）上不跟着屏幕刷新率多画两三倍
+      if (now - lastDraw < 15) return;
+      lastDraw = now;
       const c = live.current;
       scene.props = sceneProps(mq.matches);
       scene.frame(now, positionRef.current + c.offset);
