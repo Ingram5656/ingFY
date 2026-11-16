@@ -44,6 +44,8 @@ export interface SceneProps {
   lyricScale: number;
   /** 唱过的字的颜色 */
   sung: [number, number, number];
+  /** 专辑封面（data URL）；没有就是 null。圆环、声波、直方图的 3D 里放在正中 */
+  cover: string | null;
 }
 
 const W = 1440;
@@ -153,6 +155,17 @@ export class Scene3D {
   private stars: number[][] | null = null;
   private dust: { r: number; a: number; w: number; s: number; u: number }[] | null = null;
   private moteList: { x: number; z: number; y0: number; sp: number; s: number; u: number; ph: number }[] | null = null;
+
+  // ---- 专辑封面 ----
+  private coverSrc = "";
+  private coverNext: HTMLImageElement | null = null;
+  private coverImg: HTMLImageElement | null = null;
+  private coverPrev: HTMLImageElement | null = null;
+  private coverAt = -1e9;
+  /** 这一帧封面在屏幕上的中心和半径（舞台坐标）；歌词绕着它排。没画封面时是 null */
+  private coverC: number[] | null = null;
+  /** 歌词用的，跟着 coverC 慢慢挪，免得封面一转歌词跟着抖 */
+  private ringC: number[] | null = null;
 
   // ---- 歌词 ----
   private linesRef: LyricLine[] | null = null;
@@ -398,6 +411,122 @@ export class Scene3D {
       const a = k * (0.2 + 0.45 * rnd(st[3])) * (0.65 + 0.35 * Math.sin(t * 1.7 + st[3])) + (st[2] > 1.5 ? k * 0.35 * this.hhEnv : 0);
       g.fillStyle = `rgba(255,240,250,${Math.min(1, a)})`;
       g.fillRect(this.x0 + st[0] * this.fw, this.y0 + st[1] * (yMax - this.y0), st[2], st[2]);
+    }
+  }
+
+  // ---------------- 专辑封面 ----------------
+
+  /** 当前要画的封面；换歌时新图加载好了才换，旧的淡出 */
+  private cover(t: number): { img: HTMLImageElement | null; prev: HTMLImageElement | null; fade: number } {
+    const src = this.props.cover ?? "";
+    if (src !== this.coverSrc) {
+      this.coverSrc = src;
+      if (src) {
+        const im = new Image();
+        im.decoding = "async";
+        im.src = src;
+        this.coverNext = im;
+      } else {
+        this.coverNext = null;
+        if (this.coverImg) {
+          this.coverPrev = this.coverImg;
+          this.coverImg = null;
+          this.coverAt = t;
+        }
+      }
+    }
+    const nx = this.coverNext;
+    if (nx && nx.complete && nx.naturalWidth > 0) {
+      this.coverPrev = this.coverImg;
+      this.coverImg = nx;
+      this.coverNext = null;
+      this.coverAt = t;
+    }
+    const fade = this.props.reduce ? 1 : clamp((t - this.coverAt) / 0.6);
+    if (fade >= 1) this.coverPrev = null;
+    return { img: this.coverImg, prev: this.coverPrev, fade };
+  }
+
+  /**
+   * 一张悬浮在空中的封面卡片。pt(a, b) 给出卡片上一点在屏幕上的位置：a 从左 -1 到右 1，b 从下 -1 到上 1。
+   * 卡片转到背面时照样显示封面（不是镜像的反字），只是暗一点；转到侧面时只剩一道亮边。
+   * 只用三个角做仿射变换，卡片不大，透视上的误差看不出来
+   */
+  private card(img: HTMLImageElement, pt: (a: number, b: number) => P4, alpha: number, opt: { glow?: number; mirror?: boolean } = {}) {
+    if (alpha <= 0.01) return;
+    const g = this.g;
+    let A = pt(-1, 1);
+    let B = pt(1, 1);
+    let C = pt(-1, -1);
+    const D = pt(1, -1);
+    const cr = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+    const back = !opt.mirror && cr < 0;
+    if (back) {
+      A = pt(1, 1);
+      B = pt(-1, 1);
+      C = pt(1, -1);
+    }
+    const edge = () => {
+      g.beginPath();
+      g.moveTo(A[0], A[1]);
+      g.lineTo(B[0], B[1]);
+      g.lineTo(back ? pt(-1, -1)[0] : D[0], back ? pt(-1, -1)[1] : D[1]);
+      g.lineTo(C[0], C[1]);
+      g.closePath();
+    };
+    g.save();
+    g.globalAlpha = alpha;
+    // 几乎侧对着镜头：只画一道亮边
+    const w = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    const h = Math.hypot(C[0] - A[0], C[1] - A[1]);
+    if (Math.abs(cr) < w * h * 0.04) {
+      g.strokeStyle = "rgba(255,255,255,0.75)";
+      g.lineWidth = 2;
+      edge();
+      g.stroke();
+      g.restore();
+      return;
+    }
+    if (opt.glow) {
+      g.shadowColor = this.palAt(0.3, 0.75);
+      g.shadowBlur = opt.glow * this.px;
+      g.fillStyle = this.palAt(0.3, 1);
+      edge();
+      g.fill();
+      g.shadowBlur = 0;
+    }
+    g.save();
+    g.transform(B[0] - A[0], B[1] - A[1], C[0] - A[0], C[1] - A[1], A[0], A[1]);
+    g.beginPath();
+    g.roundRect(0, 0, 1, 1, 0.06);
+    g.clip();
+    g.drawImage(img, 0, 0, 1, 1);
+    // 玻璃一样的高光，背面暗下去
+    const sh = g.createLinearGradient(0, 0, 1, 1);
+    sh.addColorStop(0, back ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.24)");
+    sh.addColorStop(0.42, back ? "rgba(0,0,0,0.38)" : "rgba(255,255,255,0)");
+    sh.addColorStop(1, back ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.12)");
+    g.fillStyle = sh;
+    g.fillRect(0, 0, 1, 1);
+    g.restore();
+    g.strokeStyle = back ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.45)";
+    g.lineWidth = 1.2;
+    edge();
+    g.stroke();
+    g.restore();
+  }
+
+  /** 画封面（新旧交替时两张一起），记下它在屏幕上的位置给歌词用 */
+  private drawCover(t: number, k: number, pt: (a: number, b: number, grow: number) => P4, opt: { glow?: number; mirror?: boolean } = {}) {
+    const { img, prev, fade } = this.cover(t);
+    const pop = 1 + 0.035 * this.kickEnv;
+    if (prev) this.card(prev, (a, b) => pt(a, b, pop * (1 + 0.08 * fade)), k * (1 - fade), opt);
+    if (img) this.card(img, (a, b) => pt(a, b, pop * (0.9 + 0.1 * fade)), k * fade, opt);
+    if (!opt.mirror && (img || prev)) {
+      const c = pt(0, 0, 1);
+      const e = pt(1, 0, 1);
+      const top = pt(0, 1, 1);
+      this.coverC = [c[0], c[1], Math.max(Math.hypot(e[0] - c[0], e[1] - c[1]), Math.abs(top[1] - c[1]))];
     }
   }
 
@@ -681,6 +810,16 @@ export class Scene3D {
       for (const m of this.motes()) if (m.z < -40) this.mote(cam, m, t, k, true);
       g.restore();
     }
+    // 封面：悬在灯阵后上方的半空中，轻轻浮动、左右微微摆，跟着镜头一起转
+    if (k > 0.02) {
+      const S = 150;
+      const rot = this.props.reduce ? 0 : 0.28 * Math.sin(t * 0.33);
+      const bob = this.props.reduce ? 0 : 10 * Math.sin(t * 0.8);
+      const cx = 40;
+      const cy = 70 + bob;
+      const cz = 520;
+      this.drawCover(t, k, (a, b, s) => cam.p(cx + a * S * s * Math.cos(rot), cy + b * S * s, cz + a * S * s * Math.sin(rot)), { glow: 40 + 30 * kk });
+    }
   }
   /** 光尘：慢慢往上飘，高音来时亮一下；离镜头近的是大而虚的光斑 */
   private motes() {
@@ -828,7 +967,24 @@ export class Scene3D {
     const wc = 20 + 105 * k;
     const pc = P(0, 0, wc);
     const zc = pc[2];
+    // 有封面时圆心浮起的是封面卡片：跟着圆环一起自转、跟着拖动转；台面里有倒影
+    const hasCover = !!this.cover(t).img || !!this.cover(t).prev;
     const planet = (mirror: boolean) => {
+      if (hasCover) {
+        const S = 86;
+        const lift = mirror ? -0.8 : 1;
+        const pt = (a: number, b: number, s: number) => P(a * S * s, 0, (wc + b * S * s) * lift);
+        if (mirror) {
+          g.save();
+          g.beginPath();
+          circle(R0);
+          g.clip();
+          g.filter = this.blur(6);
+          this.drawCover(t, k * 0.22, pt, { mirror: true });
+          g.restore();
+        } else this.drawCover(t, k, pt, { glow: 50 + 30 * kk });
+        return;
+      }
       const c = mirror ? P(0, 0, -wc * 0.8) : pc;
       const rr = 84 * (1 + 0.04 * kk) * c[3];
       g.save();
@@ -1132,6 +1288,20 @@ export class Scene3D {
         g.stroke();
         g.restore();
       }
+    }
+    // 封面：悬在水面上方，水里有一个淡淡的倒影
+    if (k > 0.02) {
+      const S = 120;
+      const rot = this.props.reduce ? 0 : 0.3 * Math.sin(t * 0.3);
+      const bob = this.props.reduce ? 0 : 10 * Math.sin(t * 0.8);
+      const cy = CY + 330 + bob;
+      const cz = 700;
+      const at = (a: number, b: number, s: number, flip: number) => cam.p(a * S * s * Math.cos(rot), CY + (cy - CY) * flip + b * S * s * flip, cz + a * S * s * Math.sin(rot));
+      g.save();
+      g.filter = this.blur(5);
+      this.drawCover(t, k * 0.22, (a, b, s) => at(a, b, s, -1), { mirror: true });
+      g.restore();
+      this.drawCover(t, k, (a, b, s) => at(a, b, s, 1), { glow: 40 + 30 * kk });
     }
   }
 
@@ -1648,6 +1818,14 @@ export class Scene3D {
     const cam = this.view({ yaw: (0.06 * Math.sin(t * 0.23) * sway + this.yaw * 0.6) * k, pitch: 0, D: f + 500, f, tx: 0, ty: 0, tz: 500, cx: W / 2, cy: H / 2 });
     const place = (sx: number, sy: number, z: number) => cam.p(((sx - W / 2) * (f + z)) / f, ((H / 2 - sy) * (f + z)) / f, z);
     const ROWY = 300;
+    // 有封面时歌词绕着它排：跟着封面在屏幕上的位置慢慢挪（封面一直在转，直接跟会抖）
+    if (this.coverC && !inkW) {
+      const [cx, cy, cr] = this.coverC;
+      const want = [cx, cy + 20, Math.max(340, cr + 250), Math.max(180, cr + 95)];
+      const r0 = this.ringC;
+      this.ringC = r0 ? r0.map((v, j) => v + (want[j] - v) * 0.06) : want;
+    } else this.ringC = null;
+    const ring = this.ringC;
     const COLA = [1, 0.62, 0.4, 0.22];
     const dark = [29, 26, 22];
     for (let i = Math.floor(cur) - 3; i <= Math.floor(cur) + 4; i++) {
@@ -1701,14 +1879,25 @@ export class Scene3D {
           zAdd = -pout * 150;
         }
         aS *= lineA < 0 ? 0.42 + 0.58 * pr : lineA;
-        const ps = place(
-          145 + ((cumS + span / 2) / sumW) * 1150 + (R(13) - 0.5) * 0.42 * ((span / sumW) * 1150),
-          ROWY + (R(17) - 0.5) * 150 + 9 * Math.sin(t * 0.9 + i * 2.1 + c * 1.3) * sway,
-          -140 + R(19) * 700 + zAdd,
-        );
+        const uu = (cumS + span / 2) / sumW;
+        const bobY = 9 * Math.sin(t * 0.9 + i * 2.1 + c * 1.3) * sway;
+        let ps: P4;
+        let lean = 0;
+        if (ring) {
+          // 绕着封面：从左边经过头顶到右边，像一道彩虹；每个字离封面远近不一
+          const th = Math.PI + 0.42 - (Math.PI + 0.84) * (uu + (R(13) - 0.5) * 0.3 * (span / sumW));
+          const rr = 1 + (R(17) - 0.5) * 0.32;
+          ps = place(ring[0] + Math.cos(th) * ring[2] * rr, ring[1] - Math.sin(th) * ring[3] * rr + bobY, -60 + R(19) * 420 + zAdd);
+          lean = -(th - Math.PI / 2) * 0.32;
+        } else
+          ps = place(
+            145 + uu * 1150 + (R(13) - 0.5) * 0.42 * ((span / sumW) * 1150),
+            ROWY + (R(17) - 0.5) * 150 + bobY,
+            -140 + R(19) * 700 + zAdd,
+          );
         cumS += span;
-        const scS = base * (wide ? 0.7 + 0.45 * R(31) : 0.55 + 1.05 * R(31)) * ps[3];
-        const rotS = (R(23) - 0.5) * (wide ? 0.4 : 0.84) + 0.035 * Math.sin(t * 0.6 + c * 2 + i) * sway;
+        const scS = base * (ring ? 0.82 : 1) * (wide ? 0.7 + 0.45 * R(31) : 0.55 + 1.05 * R(31)) * ps[3];
+        const rotS = lean + (R(23) - 0.5) * (wide ? 0.4 : ring ? 0.6 : 0.84) + 0.035 * Math.sin(t * 0.6 + c * 2 + i) * sway;
         // 书法：竖着往下排，每个字略有大小、左右的出入；英文单词侧过来写
         const adv = (tk.latin ? tk.w + 20 : 74) * colS;
         const pc = place(1052 + col * 98 + (R(37) - 0.5) * 9, 122 - 37 * colS + cumC + adv / 2 + 3 * Math.sin(t * 0.7 + i + c * 0.8) * sway, Math.max(0, col) * 70);
@@ -1790,6 +1979,7 @@ export class Scene3D {
       g.fillStyle = this.baseAt(0.25, 0.32 * k);
       g.fillRect(this.x0, this.y0, this.fw, this.fh);
     }
+    this.coverC = null;
     if (P.style === "hist") this.drawHist(t, k, now);
     else if (P.style === "ring") this.drawRing(t, k, now);
     else if (P.style === "wave") this.drawWave(t, k, now);

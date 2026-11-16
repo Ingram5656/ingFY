@@ -548,6 +548,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
                           duration={now?.durationMs ?? 0}
                           lyricScale={lyricScale(settings.lyricSize)}
                           sung={sung}
+                          cover={artwork?.dataUrl ?? null}
                         />
                       </div>
                     </div>

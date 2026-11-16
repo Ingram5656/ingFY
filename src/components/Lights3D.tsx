@@ -22,6 +22,8 @@ interface Props {
   duration: number;
   lyricScale: number;
   sung: [number, number, number];
+  /** 专辑封面（data URL），圆环、声波、直方图的 3D 里放在正中 */
+  cover: string | null;
 }
 
 const STAGE_W = 1440;
@@ -58,7 +60,7 @@ export function Lights3D(p: Props) {
 
   const sceneProps = (reduce: boolean): SceneProps => {
     const c = live.current;
-    return { style: c.style, palette: c.palette, base: c.base, alpha: c.alpha, thickness: c.thickness, playing: c.playing, reactive: c.reactive, on3d: c.on3d, reduce, lines: c.lines, duration: c.duration, lyricScale: c.lyricScale, sung: c.sung };
+    return { style: c.style, palette: c.palette, base: c.base, alpha: c.alpha, thickness: c.thickness, playing: c.playing, reactive: c.reactive, on3d: c.on3d, reduce, lines: c.lines, duration: c.duration, lyricScale: c.lyricScale, sung: c.sung, cover: c.cover };
   };
 
   useEffect(() => {
