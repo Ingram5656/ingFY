@@ -29,7 +29,7 @@ export interface Settings {
   background: BackgroundKind;
   /**
    * 底色：色块之间、边角透出来的那层颜色，也决定暗度层和纯色渐变的色调。
-   * 每种背景各存一份（baseByBg）；某种背景还没单独设过时用这里的值——也就是 2.2.0 之前大家共用的那一份。
+   * 每种背景各存一份（baseByBg）；某种背景还没单独设过时用这里的值——也就是 2.3.0 之前大家共用的那一份。
    * transparent：没有底色——背景不往任何颜色里混，暗度蒙版是不带色调的黑；专辑流体必须有底色，不能选
    */
   baseColorMode: BaseMode;
@@ -196,7 +196,7 @@ function load(): Settings {
     // 2.1.0 去掉了"灯管"：之前选灯管的换成最接近的声波
     if ((merged.lightStyle as string) === "tube") merged.lightStyle = "wave";
     if ((merged.islandLightStyle as string) === "tube") merged.islandLightStyle = "wave";
-    // 2.2.0 之前桌面歌词的灯跟着拾音灯总开关走：升级上来时沿用总开关当时的状态
+    // 2.3.0 之前桌面歌词的灯跟着拾音灯总开关走：升级上来时沿用总开关当时的状态
     if (saved.deskLightsOn === undefined && saved.lightsOn !== undefined) merged.deskLightsOn = saved.lightsOn;
     // 以后新增的动作也要有默认组合
     merged.shortcuts = shortcutsOf(merged.shortcuts);
