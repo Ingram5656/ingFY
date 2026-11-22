@@ -8,6 +8,7 @@ import { resolveLang, setLang, type LangSetting } from "./i18n";
 import { setLightResponse, setLightSensitivity } from "./audio";
 import { DEFAULT_SHORTCUTS, shortcutsOf, type ShortcutMap } from "./shortcuts";
 import type { ChatSplit } from "./chat";
+import type { SleepScene } from "./scenery";
 
 export type BackgroundKind = "fluid" | "gradient" | "image" | "video" | "cover";
 export type BaseMode = "default" | "album" | "custom" | "transparent";
@@ -130,6 +131,22 @@ export interface Settings {
   closeAction: "ask" | "tray" | "quit";
   /** 右上角"小窗口"的说明气泡看过了 */
   tipWindowsSeen: boolean;
+  /** 助眠模式：主窗口变成一扇窗，窗外是夜景，可以下雨 */
+  sleepMode: boolean;
+  /** 雨量 0~100：0 是晴天，100 是瓢泼大雨 */
+  sleepRain: number;
+  /** 雨往哪边斜、斜多少度：负数往左，正数往右，0 是直着下 */
+  sleepAngle: number;
+  /** 打雷：下雨时隔一阵来一次闪电和雷声（晴天不打） */
+  sleepThunder: boolean;
+  /** 环境音：每种声音的音量 0–1（rain / waves / brown / white）。0 或者没写就是不放 */
+  sleepAmbient: Partial<Record<string, number>>;
+  /** 窗外的景色：三幅内置夜景，或者自己的图片、视频 */
+  sleepScene: SleepScene;
+  /** 窗框：无边框玻璃 / 木格窗 / 拱形窗 */
+  sleepFrame: "none" | "wood" | "arch";
+  /** 助眠模式里在窗下方显示当前这句歌词 */
+  sleepLyric: boolean;
 }
 
 /** 一张唱片的外观设置：标签、花纹、颜色 */
@@ -205,10 +222,19 @@ export const DEFAULT_SETTINGS: Settings = {
   lyricDelay: 0,
   closeAction: "ask",
   tipWindowsSeen: false,
+  sleepMode: false,
+  sleepRain: 45,
+  sleepAngle: -8,
+  sleepThunder: false,
+  sleepAmbient: {},
+  sleepScene: "city",
+  sleepFrame: "none",
+  sleepLyric: true,
 };
 
 const KEY = "nige.settings";
 const IMAGE_KEY = "nige.bgImage";
+const SLEEP_IMAGE_KEY = "nige.sleepImage";
 
 function load(): Settings {
   try {
@@ -244,6 +270,27 @@ export function saveBackgroundImage(dataUrl: string | null): boolean {
     if (dataUrl) localStorage.setItem(IMAGE_KEY, dataUrl);
     else localStorage.removeItem(IMAGE_KEY);
     emit("bg-image-changed", null);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 助眠模式窗外用的自定义图片 */
+export function loadSleepImage(): string | null {
+  try {
+    return localStorage.getItem(SLEEP_IMAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** 存助眠模式的窗外图片。返回 false 表示图片太大存不下 */
+export function saveSleepImage(dataUrl: string | null): boolean {
+  try {
+    if (dataUrl) localStorage.setItem(SLEEP_IMAGE_KEY, dataUrl);
+    else localStorage.removeItem(SLEEP_IMAGE_KEY);
+    emit("sleep-image-changed", null);
     return true;
   } catch {
     return false;

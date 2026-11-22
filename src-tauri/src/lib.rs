@@ -1,4 +1,5 @@
 mod audio;
+mod ingclock;
 mod lyrics;
 mod media;
 mod spotify;
@@ -118,6 +119,7 @@ fn toggle_desktop_lock(app: &AppHandle) {
 /// 关掉主窗口时前端让它留在托盘还是直接退出
 #[tauri::command]
 fn quit_app(app: AppHandle) {
+    ingclock::goodbye();
     app.exit(0);
 }
 
@@ -518,7 +520,7 @@ async fn spotify_set_liked(app: AppHandle, liked: bool) -> Result<bool, String> 
 // ---------- 歌词：手动换一个 ----------
 
 #[tauri::command]
-async fn lyrics_options(title: String, artist: String, duration_ms: i64) -> Vec<lyrics::LyricOption> {
+async fn lyrics_options(title: String, artist: String, duration_ms: i64) -> lyrics::OptionsReport {
     lyrics::options(&title, &artist, duration_ms).await
 }
 
@@ -794,7 +796,10 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             "prev" => control_async("previous"),
             "toggle" => control_async("toggle"),
             "next" => control_async("next"),
-            "quit" => app.exit(0),
+            "quit" => {
+                ingclock::goodbye();
+                app.exit(0);
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -1190,7 +1195,9 @@ pub fn run() {
             spotify_client_get,
             spotify_client_set,
             open_url,
-            set_language
+            set_language,
+            ingclock::ingclock_status,
+            ingclock::ingclock_command
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -1205,6 +1212,8 @@ pub fn run() {
             }
             // 桌面歌词和灵动岛的窗口这里不建，第一次打开时才建（见 ensure_window）
             spawn_island_watcher(handle.clone());
+            // 告诉 ingclock 灵动岛开没开（开着时番茄显示在灵动岛上，ingclock 的小组件让位）
+            ingclock::spawn_heartbeat(handle.clone());
             if let Err(e) = setup_tray(app) {
                 eprintln!("[tray] 创建托盘图标失败：{e}");
             }

@@ -6,6 +6,7 @@ import { trackKey } from "./types";
 import { attachRomaji, attachTranslation, dropCredits, parseLrc, parseYrc, plainToLines } from "./lrc";
 import { extractPalette, FALLBACK_PALETTE } from "./palette";
 import { registerCache, useCacheEpoch } from "./cache";
+import { t } from "./i18n";
 
 /** 订阅后端推送的正在播放、封面和桌面歌词锁定状态 */
 export function usePlayer() {
@@ -178,9 +179,14 @@ export function useAlbumPalette(artwork: Artwork | null): string[] {
   return palette;
 }
 
+/** 跳转没成功时在本窗口发出的事件，detail 是 "refused"（播放器不接受）或 "error"（请求出错） */
+export const SEEK_FAILED = "ingfy-seek-failed";
+export type SeekFailure = "refused" | "error";
+
 /**
  * 进度跳转。拖动时用预览位置；松手跳转后，在播放器确认新进度之前（最多 2.5 秒）
  * 先按目标位置往前走，避免进度条和歌词先弹回旧位置再跳过去。
+ * 播放器拒绝（返回 false）或请求出错时，马上回到真实进度，并发出 SEEK_FAILED 让界面提示。
  */
 export function useSeek(now: NowPlaying | null, position: number) {
   const [preview, setPreview] = useState<number | null>(null);
@@ -188,8 +194,18 @@ export function useSeek(now: NowPlaying | null, position: number) {
 
   const seek = (ms: number) => {
     const target = Math.max(0, Math.round(ms));
-    setPending({ ms: target, at: Date.now() });
-    invoke<boolean>("media_seek", { positionMs: target }).catch(() => setPending(null));
+    const at = Date.now();
+    setPending({ ms: target, at });
+    const fail = (kind: SeekFailure) => {
+      // 只撤销这一次跳转；用户已经又跳了一次的话，不去动新的那次
+      setPending((p) => (p && p.at === at ? null : p));
+      window.dispatchEvent(new CustomEvent<SeekFailure>(SEEK_FAILED, { detail: kind }));
+    };
+    invoke<boolean>("media_seek", { positionMs: target })
+      .then((ok) => {
+        if (ok === false) fail("refused");
+      })
+      .catch(() => fail("error"));
   };
 
   let effective = position;
@@ -202,6 +218,26 @@ export function useSeek(now: NowPlaying | null, position: number) {
     }
   }
   return { position: effective, seek, setPreview };
+}
+
+/** 跳转失败时给出一句提示，显示 3 秒；没有失败时是 null */
+export function useSeekFailure(): string | null {
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const on = (e: Event) => {
+      const kind = (e as CustomEvent<SeekFailure>).detail;
+      setMsg(kind === "refused" ? t("当前播放器不支持跳转进度") : t("跳转失败，请再试一次"));
+      clearTimeout(timer);
+      timer = setTimeout(() => setMsg(null), 3000);
+    };
+    window.addEventListener(SEEK_FAILED, on);
+    return () => {
+      window.removeEventListener(SEEK_FAILED, on);
+      clearTimeout(timer);
+    };
+  }, []);
+  return msg;
 }
 
 export function mediaControl(action: "toggle" | "next" | "previous") {

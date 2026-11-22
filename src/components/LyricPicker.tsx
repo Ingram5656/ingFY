@@ -14,6 +14,12 @@ interface LyricOption {
   synced: boolean | null;
 }
 
+/** 后端返回：候选，加上这次没连上的歌词源 */
+interface OptionsReport {
+  options: LyricOption[];
+  failed: string[];
+}
+
 interface Props {
   now: NowPlaying;
   /** 当前手动选的版本，自动匹配时为空 */
@@ -26,7 +32,8 @@ const SOURCE_NAME: Record<string, string> = { netease: t("网易云"), lrclib: "
 
 /** 换一个歌词：列出网易云和 LRCLIB 的候选，选中后这首歌以后都用它 */
 export function LyricPicker({ now, current, onPick, onClose }: Props) {
-  const [list, setList] = useState<LyricOption[] | null>(null);
+  const [result, setResult] = useState<OptionsReport | null>(null);
+  const [attempt, setAttempt] = useState(0);
   // 自动找的结果不对时，可以改歌名、歌手重新搜（比如去掉"(Live)"、换成原名）
   const [title, setTitle] = useState(now.title);
   const [artist, setArtist] = useState(now.artist);
@@ -40,14 +47,24 @@ export function LyricPicker({ now, current, onPick, onClose }: Props) {
 
   useEffect(() => {
     let alive = true;
-    setList(null);
-    invoke<LyricOption[]>("lyrics_options", { title: query.title, artist: query.artist, durationMs: now.durationMs })
-      .then((l) => alive && setList(l))
-      .catch(() => alive && setList([]));
+    setResult(null);
+    invoke<OptionsReport>("lyrics_options", { title: query.title, artist: query.artist, durationMs: now.durationMs })
+      .then((r) => alive && setResult(r))
+      // 整个请求都出错：当作两边都没连上，而不是"没找到"
+      .catch(() => alive && setResult({ options: [], failed: ["netease", "lrclib"] }));
     return () => {
       alive = false;
     };
-  }, [query.title, query.artist, now.durationMs]);
+  }, [query.title, query.artist, now.durationMs, attempt]);
+
+  const list = result?.options ?? null;
+  const failed = result?.failed ?? [];
+  const allFailed = failed.length >= 2;
+  const retry = (
+    <button type="button" className="picker-retry" onClick={() => setAttempt((n) => n + 1)}>
+      {t("重试")}
+    </button>
+  );
 
   const search = () => {
     if (title.trim()) setQuery({ title: title.trim(), artist: artist.trim() });
@@ -81,7 +98,21 @@ export function LyricPicker({ now, current, onPick, onClose }: Props) {
           </button>
         </li>
         {list === null && <li className="nl-hint">{t("正在搜索…")}</li>}
-        {list?.length === 0 && <li className="nl-hint">{t("没找到其他版本")}</li>}
+        {list !== null && allFailed && (
+          <li className="nl-hint">
+            {t("连不上歌词库，请检查网络")}
+            {retry}
+          </li>
+        )}
+        {list !== null && failed.length === 1 && (
+          <li className="nl-hint picker-partial">
+            {list.length > 0
+              ? t("{name}暂时连不上，下面只有另一边的结果", { name: t(SOURCE_NAME[failed[0]] ?? failed[0]) })
+              : t("{name}暂时连不上，另一边也没找到", { name: t(SOURCE_NAME[failed[0]] ?? failed[0]) })}
+            {retry}
+          </li>
+        )}
+        {list?.length === 0 && failed.length === 0 && <li className="nl-hint">{t("没找到其他版本")}</li>}
         {list?.map((o) => {
           const on = current.source === o.source && current.id === o.id;
           const diff = now.durationMs && o.durationMs ? Math.round((o.durationMs - now.durationMs) / 1000) : null;

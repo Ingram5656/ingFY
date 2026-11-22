@@ -11,18 +11,20 @@ import { InkCover } from "../components/InkCover";
 import { FitText } from "../components/FitText";
 import { LyricScroller } from "../components/LyricScroller";
 import { SeekBar } from "../components/SeekBar";
-import { SettingsPanel } from "../components/SettingsPanel";
+import { openSettingsPage, SettingsPanel } from "../components/SettingsPanel";
+import { SleepWindow } from "../components/SleepWindow";
+import { rainWord } from "../lib/rain";
 import { VinylView } from "../components/Vinyl";
 import { markDirection } from "../lib/vinyl";
 import { GearIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon } from "../components/Icons";
 import { findLineIndex, lineProgress } from "../lib/lrc";
-import { mediaControl, useAlbumPalette, useLyrics, usePlayer } from "../lib/player";
+import { mediaControl, useAlbumPalette, useLyrics, usePlayer, useSeekFailure } from "../lib/player";
 import { PlayheadProvider, usePlayhead, usePositionRef } from "../lib/playhead";
 import type { LyricLine } from "../lib/types";
 import { applyShortcuts, shortcutsOf } from "../lib/shortcuts";
 import { useBackgroundVideo } from "../lib/bgvideo";
 import { DEFAULT_BASE, deepTone } from "../lib/palette";
-import { baseOf, lightOrderOf, lightPalette, loadBackgroundImage, lyricScale, thickScale, useApplySettings, useSettings } from "../lib/settings";
+import { baseOf, lightOrderOf, lightPalette, loadBackgroundImage, loadSleepImage, lyricScale, thickScale, useApplySettings, useSettings } from "../lib/settings";
 import { useSpotify } from "../lib/spotify";
 import { setLyricPref, useLyricPref } from "../lib/lyricPrefs";
 import { trackKey } from "../lib/types";
@@ -91,6 +93,18 @@ function useBackgroundImage() {
   return img;
 }
 
+/** 助眠模式窗外用的自定义图片；在设置里换了图就跟着更新 */
+function useSleepImage() {
+  const [img, setImg] = useState<string | null>(loadSleepImage);
+  useEffect(() => {
+    const un = listen("sleep-image-changed", () => setImg(loadSleepImage()));
+    return () => {
+      un.then((u) => u());
+    };
+  }, []);
+  return img;
+}
+
 /**
  * 视频背景：静音循环铺满。窗口藏起来、最小化，或者被墨晕的宣纸盖住时暂停，不在后台白白解码
  */
@@ -152,6 +166,19 @@ function LightLayer({ on3d, ...rest }: Omit<Lights3DProps, "onFlat">) {
   );
 }
 
+/** 助眠模式里窗下方那一句歌词：只显示正在唱的这句，换句时淡入 */
+function SleepLyric({ lines, offset }: { lines: LyricLine[]; offset: number }) {
+  const { position } = usePlayhead();
+  const idx = findLineIndex(lines, position + offset);
+  const text = idx >= 0 ? lines[idx].text.trim() : "";
+  if (!text) return null;
+  return (
+    <p className="sleep-lyric" key={idx} aria-live="off">
+      {text}
+    </p>
+  );
+}
+
 type VinylProps = ComponentProps<typeof VinylView>;
 function LiveVinyl({
   lines,
@@ -193,6 +220,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const bgImage = useBackgroundImage();
   const bgVideo = useBackgroundVideo(settings.background === "video");
   const spotify = useSpotify(now);
+  const seekFailure = useSeekFailure();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [vinylMenuOpen, setVinylMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -201,6 +229,22 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const [winOpen, setWinOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  // 助眠模式：整个画面换成一扇窗。开睡眠定时的时候问一下要不要顺便打开
+  const sleepOn = settings.sleepMode;
+  const sleepImage = useSleepImage();
+  const sleepVideo = useBackgroundVideo(sleepOn && settings.sleepScene === "video", "sleep");
+  const [sleepAsk, setSleepAsk] = useState(false);
+  // 窗淡入完了，下面原来的背景和歌词才真的拿掉（省得白白在后面跑）
+  const [sleepSettled, setSleepSettled] = useState(sleepOn);
+  useEffect(() => {
+    if (!sleepOn) {
+      setSleepSettled(false);
+      return;
+    }
+    const timer = setTimeout(() => setSleepSettled(true), 700);
+    return () => clearTimeout(timer);
+  }, [sleepOn]);
+  const hideBase = sleepOn && sleepSettled;
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const sleep = useSleepTimer(now);
   const fullscreen = useFullscreen();
@@ -318,20 +362,20 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
   const tipWindows = !settings.tipWindowsSeen && !settingsOpen;
   const idle = useIdle(
     3000,
-    settingsOpen || vinylMenuOpen || searchOpen || listOpen || moreOpen || winOpen || pickerOpen || shareOpen || closeAsk || tipWindows,
+    settingsOpen || vinylMenuOpen || searchOpen || listOpen || moreOpen || winOpen || pickerOpen || shareOpen || closeAsk || sleepAsk || tipWindows,
     // 鼠标停在这些按钮上时不收起来
     ".fs-top, .fs-bar, .lib-search-btn, .vinyl-edit",
   );
   const sleepFading = sleep.left !== null && sleep.left <= SLEEP_FADE_MS;
   // 上下栏收起再出现时也重新量一次滑块位置
-  useSegThumb(modeSegRef, `${viewMode}|${idle}|${libraryAvailable}`);
+  useSegThumb(modeSegRef, `${viewMode}|${idle}|${libraryAvailable}|${sleepOn}`);
   // 灯效选项可以拖动排序；顺序变了滑块也要重新定位
   const lightOrder = lightOrderOf(settings.lightOrder);
-  useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}|${lightOrder.join(",")}`);
+  useSegThumb(lightSegRef, `${settings.lightsOn ? settings.lightStyle : "off"}|${idle}|${lightOrder.join(",")}|${sleepOn}`);
   const reorder = useDragReorder(lightSegRef, lightOrder, (next) => update({ lightOrder: next }));
   const bg = settings.background;
   // 墨晕自带一整套配色：宣纸底、深色字，不用背景和颜色设置。只在歌词界面生效
-  const ink = !vinyl && !library && settings.lightsOn && settings.lightStyle === "ink";
+  const ink = !sleepOn && !vinyl && !library && settings.lightsOn && settings.lightStyle === "ink";
   // 底色：默认深紫、跟随专辑（封面颜色压暗）、自己挑的颜色，或者透明（不加底色）。每种背景各有一份。
   // 图片、视频、封面还没有时临时显示的是专辑流体，这时用专辑流体的底色（流体必须有底色）
   const fluidShown = bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork);
@@ -361,26 +405,69 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
       onDoubleClick={(e) => {
         // 只认背景、空白处的双击，按钮、歌词、唱片上的不算
         const el = e.target as HTMLElement;
-        if (el.matches(".fs, .fs-stage, .mode-layer, .fs-dim, .fs-paper, .light-layer, .light-dim, .light-2d, canvas")) fullscreen.toggle();
+        if (el.matches(".fs, .fs-stage, .mode-layer, .fs-dim, .fs-paper, .light-layer, .light-dim, .light-2d, canvas") || el.closest(".sleep")) fullscreen.toggle();
       }}
-      className={`fs${idle ? " is-idle" : ""}${settings.lightsOn && !ink && !vinyl && !library ? " has-lights" : ""}${sleepFading ? " is-sleeping" : ""}${ink ? " is-ink" : ""}${clear ? " is-clear" : ""}`} style={{ "--base": base } as CSSProperties}>
+      className={`fs${idle ? " is-idle" : ""}${settings.lightsOn && !ink && !vinyl && !library && !sleepOn ? " has-lights" : ""}${sleepFading ? " is-sleeping" : ""}${sleepOn ? " is-sleepmode" : ""}${ink ? " is-ink" : ""}${clear ? " is-clear" : ""}`} style={{ "--base": base } as CSSProperties}>
       {/* 背景层：铺满整个窗口 */}
-      {(bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork)) && (
+      {!hideBase && (bg === "fluid" || (bg === "image" && !bgImage) || (bg === "video" && !bgVideo) || (bg === "cover" && !artwork)) && (
         <>
           <div className="fs-blob fs-blob--a" />
           <div className="fs-blob fs-blob--b" />
           <div className="fs-blob fs-blob--c" />
         </>
       )}
-      {bg === "gradient" && <div className="fs-bg fs-bg--gradient" />}
-      {showImage && <div className="fs-bg fs-bg--image" style={{ backgroundImage: `url(${bgImage})` }} />}
-      {bg === "video" && bgVideo && <BackgroundVideo src={bgVideo} paused={ink} />}
-      {showCover && <div className="fs-bg fs-bg--cover" style={{ backgroundImage: `url(${artwork!.dataUrl})` }} />}
+      {!hideBase && bg === "gradient" && <div className="fs-bg fs-bg--gradient" />}
+      {!hideBase && showImage && <div className="fs-bg fs-bg--image" style={{ backgroundImage: `url(${bgImage})` }} />}
+      {!hideBase && bg === "video" && bgVideo && <BackgroundVideo src={bgVideo} paused={ink || sleepOn} />}
+      {!hideBase && showCover && <div className="fs-bg fs-bg--cover" style={{ backgroundImage: `url(${artwork!.dataUrl})` }} />}
       <div className="fs-dim" />
       <div className="fs-paper" aria-hidden="true" />
 
+      {/* 助眠模式：一扇铺满窗口的窗，盖在背景上面、控件下面 */}
+      <Presence show={sleepOn} ms={450}>
+        <SleepWindow
+          rain={settings.sleepRain}
+          scene={settings.sleepScene}
+          frame={settings.sleepFrame}
+          image={sleepImage}
+          video={sleepVideo}
+          angle={settings.sleepAngle}
+          thunder={settings.sleepThunder}
+          playing={!!now?.playing}
+          ambient={settings.sleepAmbient}
+          timerEndedAt={sleep.endedAt}
+        />
+      </Presence>
+
       <div className="fs-stage" style={{ transform: `scale(${scale})` }}>
         <header className="fs-top">
+          {sleepOn && (
+            <>
+              <div className="sleep-chip glass">
+                <MoonIcon />
+                <span>{t("助眠模式")}</span>
+                <button onClick={() => update({ sleepMode: false })}>{t("退出")}</button>
+              </div>
+              {/* 雨量：从晴天一路拖到瓢泼大雨 */}
+              <label className="sleep-rain glass">
+                <SunIcon />
+                <input
+                  className="sleep-range"
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={settings.sleepRain}
+                  aria-label={t("雨量")}
+                  aria-valuetext={t(rainWord(settings.sleepRain))}
+                  style={{ "--p": `${settings.sleepRain}%` } as CSSProperties}
+                  onChange={(e) => update({ sleepRain: Number(e.target.value) })}
+                />
+                <RainIcon />
+                <span className="sleep-rain-word">{t(rainWord(settings.sleepRain))}</span>
+              </label>
+            </>
+          )}
+          {!sleepOn && (
           <div ref={modeSegRef} className="seg seg--left glass" role="radiogroup" aria-label={t("显示方式")}>
             <span className="seg-thumb" aria-hidden="true" />
             {(
@@ -409,7 +496,8 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
               </button>
             ))}
           </div>
-          {viewMode === "lyrics" && (
+          )}
+          {!sleepOn && viewMode === "lyrics" && (
           <div className="seg seg--lights glass" role="group" aria-label={t("拾音灯")}>
             {/* 拾音灯：「关」和各种灯效放在同一组里，一次只能选一个 */}
             <div ref={lightSegRef} className="seg-group" role="radiogroup" aria-label={t("拾音灯效果")} onClickCapture={reorder.onClickCapture}>
@@ -500,7 +588,9 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
           </div>
         </header>
 
-        {modeLayers.map(({ key, leaving }) => (
+        {sleepOn && settings.sleepLyric && lyrics.status === "ready" && lyrics.synced && <SleepLyric lines={lines} offset={offset} />}
+
+        {!hideBase && modeLayers.map(({ key, leaving }) => (
           <div key={key} className={`mode-layer${leaving ? " is-leaving" : " is-entering"}`} aria-hidden={leaving || undefined}>
             {key === "playlists" || key === "albums" ? (
               <LibraryView
@@ -603,6 +693,14 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
           </div>
         ))}
 
+        <Presence show={!!seekFailure && !spotify.message}>
+          {seekFailure && !spotify.message && (
+            <div className="toast glass toast--error" role="status">
+              {seekFailure}
+            </div>
+          )}
+        </Presence>
+
         <Presence show={!!spotify.message}>
           {spotify.message && (
             <div className={`toast glass${spotify.message.kind === "error" ? " toast--error" : ""}`} role="status">
@@ -651,9 +749,24 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
             }}
             sleep={sleep.mode}
             sleepLeft={sleepLabel(sleep.mode, sleep.left)}
-            onSleep={sleep.start}
+            onSleep={(m) => {
+              const wasOff = sleep.mode === "off";
+              sleep.start(m);
+              // 刚打开睡眠定时、助眠模式还没开：问一下要不要一起打开
+              if (wasOff && m !== "off" && !sleepOn) {
+                setMoreOpen(false);
+                setSleepAsk(true);
+              }
+            }}
+            sleepMode={sleepOn}
+            onSleepMode={(v) => update({ sleepMode: v })}
+            onSleepSettings={() => {
+              setMoreOpen(false);
+              openSettingsPage("sleep");
+              setSettingsOpen(true);
+            }}
             view={
-              viewMode === "lyrics" && settings.lightsOn
+              !sleepOn && viewMode === "lyrics" && settings.lightsOn
                 ? {
                     showLyrics: settings.showLyrics,
                     showAlbum: settings.showAlbum,
@@ -738,7 +851,7 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
         </footer>
 
         <KeyControls
-          enabled={!settingsOpen && !pickerOpen && !shareOpen}
+          enabled={!settingsOpen && !pickerOpen && !shareOpen && !sleepAsk}
           lines={lyrics.synced ? lines : null}
           offset={offset}
           duration={now?.durationMs ?? 0}
@@ -778,6 +891,28 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
           </Sheet>
         </Presence>
 
+        <Presence show={sleepAsk} ms={260}>
+          <Sheet title={t("要开启助眠模式吗")} onClose={() => setSleepAsk(false)}>
+            <div className="close-ask">
+              <p>{t("请选择你喜欢的助眠音乐，今天辛苦啦，睡个好觉！")}</p>
+              <div className="close-ask-btns">
+                <button className="st-btn" onClick={() => setSleepAsk(false)}>
+                  {t("不用了")}
+                </button>
+                <button
+                  className="st-btn st-btn--primary"
+                  onClick={() => {
+                    update({ sleepMode: true });
+                    setSleepAsk(false);
+                  }}
+                >
+                  {t("开启助眠模式")}
+                </button>
+              </div>
+            </div>
+          </Sheet>
+        </Presence>
+
         <Presence show={pickerOpen && !!now} ms={260}>
           {now && (
           <LyricPicker
@@ -806,6 +941,32 @@ function FullScreenBody({ now, artwork, desktopLocked }: ReturnType<typeof usePl
         </Presence>
       </div>
     </div>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a.7.7 0 0 0-.9-.9 9.9 9.9 0 1 0 12.9 12.9.7.7 0 0 0-.9-.9z" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.8" />
+      <path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M5.6 18.4l1.6-1.6M16.8 7.2l1.6-1.6" />
+    </svg>
+  );
+}
+
+function RainIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M7 15.5a4.2 4.2 0 0 1 .4-8.4 5.4 5.4 0 0 1 10.3 1.5 3.5 3.5 0 0 1-.4 6.9" />
+      <path d="M8.5 18.5l-1 2.2M12.5 17.5l-1.2 3.2M16.5 18.5l-1 2.2" />
+    </svg>
   );
 }
 

@@ -2,7 +2,11 @@ import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import type { Settings, BackgroundKind, BasePref } from "../lib/settings";
-import { baseOf, withBase, lightOrderOf, downscaleImage, saveBackgroundImage } from "../lib/settings";
+import { baseOf, withBase, lightOrderOf, downscaleImage, loadSleepImage, saveBackgroundImage, saveSleepImage } from "../lib/settings";
+import { paintScene, SLEEP_SCENES, type SleepScene } from "../lib/scenery";
+import { rainWord } from "../lib/rain";
+import { AMBIENT_SOUNDS, ambientLevels, setAmbientPreview } from "../lib/ambient";
+import { SLEEP_FRAMES, type SleepFrame } from "./SleepWindow";
 import type { LightStyle } from "./Lights";
 import type { AccountStatus } from "../lib/spotify";
 import { CheckIcon } from "./Icons";
@@ -500,14 +504,14 @@ function orderedStyles(order: LightStyle[] | undefined) {
   return lightOrderOf(order).map((id) => LIGHT_STYLES.find((l) => l.id === id)!);
 }
 
-function Slider({ label, value, onChange, display }: { label: string; value: number; onChange: (v: number) => void; display?: string }) {
+function Slider({ label, value, onChange, display, min = 0, max = 100 }: { label: string; value: number; onChange: (v: number) => void; display?: string; min?: number; max?: number }) {
   return (
     <label className="st-slider">
       <span>
         {label}
         {display && <em className="st-val">{display}</em>}
       </span>
-      <input type="range" min={0} max={100} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} />
     </label>
   );
 }
@@ -1115,6 +1119,7 @@ export function SettingsPanel(p: Props) {
     ),
     island: <IslandSection settings={s} update={update} palette={p.palette} lightPal={lightPal} artworkUrl={p.artworkUrl} />,
     chat: <ChatSection settings={s} update={update} artworkUrl={p.artworkUrl} />,
+    sleep: <SleepSection settings={s} update={update} />,
     general: <GeneralSection initial={p.updateInfo} settings={s} update={update} />,
   };
 
@@ -1534,6 +1539,257 @@ function ChatSection({ settings: s, update, artworkUrl }: { settings: Settings; 
   );
 }
 
+// ------------------------------------------------------------------ 助眠模式
+
+/** 内置景色的小预览：直接把景色画在一张小画布上 */
+function SceneThumb({ scene }: { scene: Exclude<SleepScene, "custom" | "video"> }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (ref.current) paintScene(ref.current, 360, 200, scene, false, null);
+  }, [scene]);
+  return <canvas ref={ref} className="st-scene-cv" />;
+}
+
+/** 窗框的小预览 */
+function FrameThumb({ id }: { id: SleepFrame }) {
+  const arch = "M68 64V28A22 22 0 0 1 112 28V64Z";
+  return (
+    <svg viewBox="0 0 180 68" preserveAspectRatio="xMidYMid slice" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <linearGradient id={`st-ft-${id}`} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="#0B1030" />
+          <stop offset="1" stopColor="#4A3B74" />
+        </linearGradient>
+      </defs>
+      <rect width="180" height="68" fill={`url(#st-ft-${id})`} />
+      <circle cx={id === "arch" ? 98 : 44} cy={id === "arch" ? 40 : 22} r={id === "arch" ? 3.5 : 5.5} fill="#EDEAE0" />
+      {id === "none" && (
+        <g fill="rgba(255,255,255,0.5)">
+          <circle cx="24" cy="46" r="2.2" />
+          <circle cx="76" cy="44" r="3" />
+          <circle cx="104" cy="22" r="1.8" />
+          <circle cx="132" cy="50" r="2.4" />
+          <circle cx="84" cy="14" r="1.4" />
+          <circle cx="152" cy="30" r="1.6" />
+        </g>
+      )}
+      {id === "wood" && (
+        <g fill="#33241D">
+          <path fillRule="evenodd" d="M0 0H180V68H0Z M8 6V57H172V6Z" />
+          <rect x="88" y="6" width="4" height="51" />
+          <rect x="8" y="27" width="164" height="4" />
+          <rect y="57" width="180" height="11" fill="#48362B" />
+        </g>
+      )}
+      {id === "arch" && (
+        <g>
+          <path fillRule="evenodd" fill="#171029" d={`M0 0H180V68H0Z ${arch}`} />
+          <path d={`${arch} M68 28H112 M82.7 28V64 M97.3 28V64 M68 46H112 M90 28V6 M74.4 12.4L90 28L105.6 12.4`} fill="none" stroke="#0B0817" strokeWidth="1.6" />
+        </g>
+      )}
+    </svg>
+  );
+}
+
+function SleepSection({ settings: s, update }: { settings: Settings; update: (patch: Partial<Settings>) => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
+  const [image, setImage] = useState<string | null>(loadSleepImage);
+  const [error, setError] = useState<string | null>(null);
+  const poster = useVideoPoster("sleep");
+  const hasVideo = poster !== null;
+  const [importing, setImporting] = useState(false);
+  const pickVideo = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    setError(null);
+    try {
+      await saveBackgroundVideo(file, "sleep");
+      update({ sleepScene: "video" });
+    } catch (err) {
+      setError(t(String((err as Error).message ?? err)));
+    } finally {
+      setImporting(false);
+    }
+  };
+  const a = s.sleepAngle;
+  const sunny = s.sleepRain <= 0;
+  // 环境音的试听：开着的时候跟着滑块实时变；离开这一页就停
+  const [previewing, setPreviewing] = useState(false);
+  useEffect(() => {
+    if (previewing) setAmbientPreview(ambientLevels(s.sleepAmbient, s.sleepRain));
+  }, [previewing, s.sleepAmbient, s.sleepRain]);
+  useEffect(() => {
+    if (!previewing) return;
+    return () => setAmbientPreview(null);
+  }, [previewing]);
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const url = await downscaleImage(file, 1920);
+      if (!saveSleepImage(url)) {
+        setError(t("图片太大了，换一张小一点的试试"));
+        return;
+      }
+      setImage(url);
+      setError(null);
+      update({ sleepScene: "custom" });
+    } catch (err) {
+      setError(t(String((err as Error).message ?? err)));
+    }
+  };
+  const check = (
+    <span className="st-check">
+      <CheckIcon />
+    </span>
+  );
+  return (
+    <>
+      <Group>
+        <Toggle label={t("助眠模式")} on={s.sleepMode} onChange={(on) => update({ sleepMode: on })} />
+        <Toggle label={t("显示当前歌词")} on={s.sleepLyric} onChange={(on) => update({ sleepLyric: on })} />
+      </Group>
+
+      <Group title={t("天气")}>
+        <div className="st-cell">
+          <Slider label={t("雨量")} value={s.sleepRain} onChange={(v) => update({ sleepRain: v })} display={t(rainWord(s.sleepRain))} />
+        </div>
+        <div className="st-cell">
+          <Slider
+            label={t("雨的角度")}
+            min={-40}
+            max={40}
+            value={a}
+            onChange={(v) => update({ sleepAngle: Math.abs(v) <= 1 ? 0 : v })}
+            display={a === 0 ? t("直着下") : `${t(a < 0 ? "往左斜" : "往右斜")} ${Math.abs(a)}°`}
+          />
+        </div>
+        <Toggle label={t("打雷")} on={s.sleepThunder && !sunny} disabled={sunny} onChange={(on) => update({ sleepThunder: on })} />
+      </Group>
+      <Group title={t("环境音")}>
+        {AMBIENT_SOUNDS.map(({ id, label }) => {
+          const percent = Math.round((s.sleepAmbient[id] ?? 0) * 100);
+          return (
+            <div className="st-cell" key={id}>
+              <Slider
+                label={t(label)}
+                value={percent}
+                onChange={(v) => update({ sleepAmbient: { ...s.sleepAmbient, [id]: v / 100 } })}
+                display={percent === 0 ? t("不放") : id === "rain" && sunny ? `${percent}% · ${t("晴天不响")}` : `${percent}%`}
+              />
+            </div>
+          );
+        })}
+        <div className="st-cell st-update">
+          <span>{t("现在这样搭配是什么声音")}</span>
+          <button className="st-btn" onClick={() => setPreviewing((p) => !p)}>
+            {previewing ? t("停止试听") : t("试听")}
+          </button>
+        </div>
+      </Group>
+
+      <Group title={t("窗外景色")}>
+        <div className="st-cell">
+          <div className="st-tiles st-tiles--scene" role="radiogroup" aria-label={t("窗外景色")}>
+            {SLEEP_SCENES.map((o) => (
+              <button key={o.id} className="st-tile" role="radio" aria-checked={s.sleepScene === o.id} onClick={() => update({ sleepScene: o.id })}>
+                <span className="st-thumb">
+                  <SceneThumb scene={o.id} />
+                  {s.sleepScene === o.id && check}
+                </span>
+                <span>{t(o.label)}</span>
+              </button>
+            ))}
+            <button
+              className="st-tile"
+              role="radio"
+              aria-checked={s.sleepScene === "custom"}
+              onClick={() => (image ? update({ sleepScene: "custom" }) : fileRef.current?.click())}
+            >
+              <span className="st-thumb" style={image ? { backgroundImage: `url(${image})`, backgroundSize: "cover", backgroundPosition: "center" } : {}}>
+                {!image && <span className="st-upload">{t("点击选择")}</span>}
+                {s.sleepScene === "custom" && image && check}
+              </span>
+              <span>{t(image ? "我的图片" : "选择图片")}</span>
+            </button>
+            <button
+              className="st-tile"
+              role="radio"
+              aria-checked={s.sleepScene === "video"}
+              disabled={importing}
+              onClick={() => (hasVideo ? update({ sleepScene: "video" }) : videoRef.current?.click())}
+            >
+              <span className="st-thumb" style={poster ? { backgroundImage: `url(${poster})`, backgroundSize: "cover", backgroundPosition: "center" } : hasVideo ? { background: "#141a33" } : {}}>
+                {(!hasVideo || importing) && <span className="st-upload">{importing ? t("正在导入…") : t("点击选择")}</span>}
+                {hasVideo && !importing && (
+                  <span className="st-play-badge" aria-hidden="true">
+                    <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1l7 4-7 4z" fill="currentColor" /></svg>
+                  </span>
+                )}
+                {s.sleepScene === "video" && hasVideo && check}
+              </span>
+              <span>{t(hasVideo ? "我的视频" : "选择视频")}</span>
+            </button>
+          </div>
+          {(image || hasVideo) && (
+            <div className="st-row-btns">
+              {image && (
+                <button className="st-link" onClick={() => fileRef.current?.click()}>
+                  {t("换一张图片")}
+                </button>
+              )}
+              {hasVideo && (
+                <button className="st-link" disabled={importing} onClick={() => videoRef.current?.click()}>
+                  {t("换一个视频")}
+                </button>
+              )}
+              {hasVideo && (
+                <button
+                  className="st-link"
+                  disabled={importing}
+                  onClick={() => {
+                    void deleteBackgroundVideo("sleep");
+                    if (s.sleepScene === "video") update({ sleepScene: "city" });
+                  }}
+                >
+                  {t("删除视频")}
+                </button>
+              )}
+            </div>
+          )}
+          {error && (
+            <p className="st-error" role="alert">
+              {error}
+            </p>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={pick} />
+          <input ref={videoRef} type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v" hidden onChange={pickVideo} />
+        </div>
+      </Group>
+
+      <Group title={t("窗框")}>
+        <div className="st-cell">
+          <div className="st-tiles st-tiles--frame" role="radiogroup" aria-label={t("窗框")}>
+            {SLEEP_FRAMES.map((o) => (
+              <button key={o.id} className="st-tile" role="radio" aria-checked={s.sleepFrame === o.id} onClick={() => update({ sleepFrame: o.id })}>
+                <span className="st-thumb">
+                  <FrameThumb id={o.id} />
+                  {s.sleepFrame === o.id && check}
+                </span>
+                <span>{t(o.label)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Group>
+    </>
+  );
+}
+
 // ------------------------------------------------------------------ 分组、开关行
 
 /** iOS 设置里那种圆角分组：可选的小标题、几行内容、底部灰色说明 */
@@ -1561,7 +1817,7 @@ function Toggle({ label, sub, on, onChange, disabled }: { label: string; sub?: s
   );
 }
 
-type PageId = "look" | "lyrics" | "desktop" | "lights" | "island" | "chat" | "spotify" | "general";
+type PageId = "look" | "lyrics" | "desktop" | "lights" | "island" | "chat" | "sleep" | "spotify" | "general";
 
 const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
   {
@@ -1628,6 +1884,16 @@ const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
     ),
   },
   {
+    id: "sleep",
+    label: "助眠模式",
+    color: "linear-gradient(135deg, #7D7AFF, #3F3CB8)",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+        <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a.7.7 0 0 0-.9-.9 9.9 9.9 0 1 0 12.9 12.9.7.7 0 0 0-.9-.9z" />
+      </svg>
+    ),
+  },
+  {
     id: "spotify",
     label: "Spotify",
     color: "linear-gradient(135deg, #30D158, #1DB954)",
@@ -1652,3 +1918,8 @@ const NAV: { id: PageId; label: string; color: string; icon: JSX.Element }[] = [
 
 /** 记住上次停在哪个分类，下次打开设置还在那 */
 let lastPage: PageId = "look";
+
+/** 让设置下次打开时直接停在某个分类（比如从"更多"菜单进助眠模式的设置） */
+export function openSettingsPage(id: PageId) {
+  lastPage = id;
+}

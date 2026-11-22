@@ -6,12 +6,15 @@ import { emit, listen } from "@tauri-apps/api/event";
  * 所以整个文件存进网页内核的 IndexedDB（在软件自己的数据文件夹里，原文件挪走、删掉都不影响），
  * 播放时再取出来生成一个本地地址。另存一张小封面，给设置里的缩略图用。
  * "清理缓存"不会清掉它（那只清网页缓存，不动 IndexedDB）。
+ * 一共两个位置：全屏背景（bg）和助眠模式的窗外（sleep），各存各的。
  */
 const DB = "ingfy-media";
 const STORE = "files";
-const KEY = "bg-video";
-const POSTER_KEY = "ingfy.bgVideoPoster";
-const EVENT = "bg-video-changed";
+export type VideoSlot = "bg" | "sleep";
+const SLOTS: Record<VideoSlot, { key: string; poster: string; event: string }> = {
+  bg: { key: "bg-video", poster: "ingfy.bgVideoPoster", event: "bg-video-changed" },
+  sleep: { key: "sleep-video", poster: "ingfy.sleepVideoPoster", event: "sleep-video-changed" },
+};
 /** 再大播放和导入都会很吃内存 */
 export const MAX_VIDEO_BYTES = 400 * 1024 * 1024;
 
@@ -40,9 +43,9 @@ async function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRe
 }
 
 /** 读出视频文件；没有返回 null */
-async function loadVideoBlob(): Promise<Blob | null> {
+async function loadVideoBlob(slot: VideoSlot): Promise<Blob | null> {
   try {
-    const v = await tx<Blob | undefined>("readonly", (s) => s.get(KEY) as IDBRequest<Blob | undefined>);
+    const v = await tx<Blob | undefined>("readonly", (s) => s.get(SLOTS[slot].key) as IDBRequest<Blob | undefined>);
     return v instanceof Blob ? v : null;
   } catch {
     return null;
@@ -92,74 +95,75 @@ function probe(file: Blob): Promise<string> {
 }
 
 /** 存一个新的背景视频。超大、放不了、存不下都会抛出可以直接给人看的错误 */
-export async function saveBackgroundVideo(file: File): Promise<void> {
+export async function saveBackgroundVideo(file: File, slot: VideoSlot = "bg"): Promise<void> {
   if (file.size > MAX_VIDEO_BYTES) throw new Error("视频太大了，请选 400 MB 以内的");
+  const { key, poster: posterKey, event } = SLOTS[slot];
   const poster = await probe(file);
   try {
-    await tx("readwrite", (s) => s.put(file, KEY));
+    await tx("readwrite", (s) => s.put(file, key));
   } catch {
     throw new Error("存不下这个视频，可能是磁盘空间不够");
   }
   try {
-    if (poster) localStorage.setItem(POSTER_KEY, poster);
-    else localStorage.removeItem(POSTER_KEY);
+    if (poster) localStorage.setItem(posterKey, poster);
+    else localStorage.removeItem(posterKey);
   } catch {
     // 封面存不下也不影响播放
   }
-  await emit(EVENT, null);
+  await emit(event, null);
 }
 
-export async function deleteBackgroundVideo(): Promise<void> {
+export async function deleteBackgroundVideo(slot: VideoSlot = "bg"): Promise<void> {
   try {
-    await tx("readwrite", (s) => s.delete(KEY));
+    await tx("readwrite", (s) => s.delete(SLOTS[slot].key));
   } catch {
     // 本来就没有
   }
-  localStorage.removeItem(POSTER_KEY);
-  await emit(EVENT, null);
+  localStorage.removeItem(SLOTS[slot].poster);
+  await emit(SLOTS[slot].event, null);
 }
 
-function readPoster(): string | null {
+function readPoster(slot: VideoSlot): string | null {
   try {
-    return localStorage.getItem(POSTER_KEY);
+    return localStorage.getItem(SLOTS[slot].poster);
   } catch {
     return null;
   }
 }
 
 /** 设置里的缩略图：有视频时返回封面（截不到封面时返回空字符串），没有视频返回 null */
-export function useVideoPoster(): string | null {
-  const [poster, setPoster] = useState<string | null>(readPoster);
-  const [has, setHas] = useState<boolean>(() => readPoster() !== null);
+export function useVideoPoster(slot: VideoSlot = "bg"): string | null {
+  const [poster, setPoster] = useState<string | null>(() => readPoster(slot));
+  const [has, setHas] = useState<boolean>(() => readPoster(slot) !== null);
   useEffect(() => {
     let alive = true;
     const check = () =>
-      void loadVideoBlob().then((b) => {
+      void loadVideoBlob(slot).then((b) => {
         if (!alive) return;
         setHas(!!b);
-        setPoster(readPoster());
+        setPoster(readPoster(slot));
       });
     check();
-    const un = listen(EVENT, check);
+    const un = listen(SLOTS[slot].event, check);
     return () => {
       alive = false;
       void un.then((f) => f());
     };
-  }, []);
+  }, [slot]);
   return has ? poster ?? "" : null;
 }
 
 /**
- * 全屏背景：enabled 时取出视频生成播放地址，不用了就释放。
+ * 全屏背景（或助眠模式的窗外）：enabled 时取出视频生成播放地址，不用了就释放。
  * 返回 undefined 表示还在读，null 表示没有视频
  */
-export function useBackgroundVideo(enabled: boolean): string | null | undefined {
+export function useBackgroundVideo(enabled: boolean, slot: VideoSlot = "bg"): string | null | undefined {
   const [url, setUrl] = useState<string | null | undefined>(undefined);
   const [version, setVersion] = useState(0);
   useEffect(() => {
-    const un = listen(EVENT, () => setVersion((v) => v + 1));
+    const un = listen(SLOTS[slot].event, () => setVersion((v) => v + 1));
     return () => void un.then((f) => f());
-  }, []);
+  }, [slot]);
   useEffect(() => {
     if (!enabled) {
       setUrl(undefined);
@@ -167,7 +171,7 @@ export function useBackgroundVideo(enabled: boolean): string | null | undefined 
     }
     let alive = true;
     let made: string | null = null;
-    void loadVideoBlob().then((b) => {
+    void loadVideoBlob(slot).then((b) => {
       if (!alive) return;
       made = b ? URL.createObjectURL(b) : null;
       setUrl(made);
@@ -176,6 +180,6 @@ export function useBackgroundVideo(enabled: boolean): string | null | undefined 
       alive = false;
       if (made) URL.revokeObjectURL(made);
     };
-  }, [enabled, version]);
+  }, [enabled, version, slot]);
   return url;
 }

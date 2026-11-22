@@ -17,6 +17,8 @@ export function useSleepTimer(now: NowPlaying | null) {
   const [mode, setMode] = useState<SleepMode>("off");
   const [endsAt, setEndsAt] = useState(0);
   const [tick, setTick] = useState(0);
+  // 上一次到点是什么时候（助眠模式的环境音靠它知道"这次暂停是定时到点"，慢慢减弱）
+  const [endedAt, setEndedAt] = useState(0);
   const armedTrack = useRef("");
   const key = now?.title ? trackKey(now) : "";
 
@@ -36,6 +38,7 @@ export function useSleepTimer(now: NowPlaying | null) {
   useEffect(() => {
     if (typeof mode === "number" && Date.now() >= endsAt) {
       if (now?.playing) void mediaControl("toggle");
+      setEndedAt(Date.now());
       setMode("off");
     }
   }, [tick, mode, endsAt, now?.playing]);
@@ -44,6 +47,7 @@ export function useSleepTimer(now: NowPlaying | null) {
   useEffect(() => {
     if (mode !== "track" || !key || key === armedTrack.current) return;
     void mediaControl("toggle");
+    setEndedAt(Date.now());
     setMode("off");
   }, [mode, key]);
 
@@ -51,7 +55,7 @@ export function useSleepTimer(now: NowPlaying | null) {
   if (typeof mode === "number") left = Math.max(0, endsAt - Date.now());
   else if (mode === "track" && now) left = Math.max(0, now.durationMs - livePosition(now));
 
-  return { mode, start, left };
+  return { mode, start, left, endedAt };
 }
 
 export function sleepLabel(mode: SleepMode, left: number | null): string {

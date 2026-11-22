@@ -794,6 +794,11 @@ span.nl-cover { position: relative; overflow: hidden; display: block; }
 /* 换歌词 */
 .picker-list { max-height: 560px; }
 .picker-list .nl-hint { list-style: none; margin: 24px 0; }
+/* 有一边歌词源没连上：放在列表最上面，字小一点，不占太多地方 */
+.picker-list .picker-partial { margin: 6px 0 10px; font-size: 13px; color: rgba(255,255,255,0.62); }
+.picker-retry { display: block; margin: 10px auto 0; padding: 6px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.28);
+  background: rgba(255,255,255,0.1); color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.picker-retry:hover { background: rgba(255,255,255,0.18); }
 .picker-src { flex: none; min-width: 52px; height: 22px; padding: 0 8px; box-sizing: border-box; display: inline-grid; place-items: center; border-radius: 999px;
   font-size: 11.5px; font-weight: 700; background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.85); }
 .picker-src--netease { background: rgba(236,65,65,0.28); }
@@ -1019,14 +1024,77 @@ html[data-window="island"], html[data-window="island"] body { background: transp
 .isl-seek .seek { padding: calc(9 * var(--u)) 0; }
 .isl-seek .track { height: calc(4 * var(--u)); }
 .isl-seek .seek:hover .track, .isl-seek .is-dragging .track { height: calc(6 * var(--u)); }
+.isl-seek-hint { margin-top: calc(2 * var(--u)); text-align: center; font-size: calc(11 * var(--u)); color: rgba(255,170,170,0.9);
+  animation: text-in 0.3s var(--ease-apple) both; }
 .isl-seek .knob { width: calc(11 * var(--u)); height: calc(11 * var(--u)); margin: calc(-5.5 * var(--u)) 0 0 calc(-5.5 * var(--u)); }
 
 .isl-controls { display: flex; justify-content: center; align-items: center; gap: calc(26 * var(--u)); margin-top: auto; }
 .isl-controls .ibtn { width: calc(40 * var(--u)); height: calc(40 * var(--u)); }
 .isl-controls .isl-play { width: calc(46 * var(--u)); height: calc(46 * var(--u)); }
 
+/* ----- 灵动岛里的番茄（ingclock 开着时） ----- */
+/* 圆环：和 ingclock 的图标同一个样子。专注时白色，休息时绿色，暂停时变暗 */
+.isl-root { --ring-track: rgba(255,255,255,0.18); --ring-focus: #fff; --ring-break: #4bf0b5; }
+.isl-ring { position: relative; flex: none; display: grid; place-items: center; }
+.isl-ring svg { position: absolute; inset: 0; }
+.isl-ring-track { stroke: var(--ring-track); }
+.isl-ring-arc { stroke: var(--ring-focus); transition: stroke-dasharray 0.4s linear, opacity 0.3s ease; }
+.isl-ring[data-phase="break"] .isl-ring-arc { stroke: var(--ring-break); filter: drop-shadow(0 0 calc(4 * var(--u)) color-mix(in srgb, var(--ring-break) 60%, transparent)); }
+.isl-ring.is-paused .isl-ring-arc { opacity: 0.45; }
+.isl-ring-num { position: relative; font-family: var(--font-latin); font-size: calc(11 * var(--u)); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.isl-ring[data-phase="break"] .isl-ring-num { color: var(--ring-break); }
+.isl-ring-pause { position: relative; display: flex; gap: calc(3 * var(--u)); }
+.isl-ring-pause i { width: calc(3 * var(--u)); height: calc(10 * var(--u)); border-radius: calc(2 * var(--u)); background: currentColor; }
+/* 收起：封面、歌词、分隔线、圆环，圆环贴右边 */
+.has-clock .isl-compact { justify-content: flex-start; padding-right: calc(9 * var(--u)); }
+.has-clock .isl-compact .isl-text { flex: 1; }
+.isl-sep { flex: none; width: 1px; height: calc(18 * var(--u)); background: rgba(255,255,255,0.16); }
+/* 没在放歌：封面的位置换成大一点的圆环，歌词的位置显示任务名，右边是剩余时间 */
+.is-clock-only .isl-compact { padding: 0 calc(20 * var(--u)) 0 calc(14 * var(--u)); }
+.isl-clock-task { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: calc(16 * var(--u)); }
+.isl-clock-time { flex: none; font-family: var(--font-latin); font-size: calc(17 * var(--u)); font-weight: 800; font-variant-numeric: tabular-nums; }
+/* 展开：下面多一条番茄 */
+.has-clock.is-open .isl { height: min(calc(236 * var(--u)), calc(100vh - 18px)); }
+.has-clock .isl-controls { margin-top: calc(2 * var(--u)); }
+.isl-pomo { margin-top: auto; height: calc(48 * var(--u)); flex: none; display: flex; align-items: center; gap: calc(10 * var(--u));
+  padding: 0 calc(6 * var(--u)) 0 calc(9 * var(--u)); border-radius: 999px;
+  background: rgba(255,255,255,0.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.09); }
+.isl-pomo-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.isl-pomo-text span { font-size: calc(13 * var(--u)); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.isl-pomo-text small { font-size: calc(11 * var(--u)); color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.isl-pomo-time { flex: none; font-family: var(--font-latin); font-size: calc(19 * var(--u)); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.isl-pomo .ibtn { width: calc(34 * var(--u)); height: calc(34 * var(--u)); flex: none; }
+/* 到点：岛自己展开提醒，拾音灯压暗 */
+.is-notice .isl { width: min(calc(420 * var(--u)), calc(100vw - 28px)); height: min(calc(132 * var(--u)), calc(100vh - 18px)); border-radius: calc(36 * var(--u)); }
+.is-docked.is-notice .isl { border-radius: 0 0 calc(36 * var(--u)) calc(36 * var(--u)); }
+.is-notice .isl-lights .lights { opacity: calc(var(--light-alpha, 0.85) * 0.25); transition: opacity 0.4s ease; }
+.is-notice .isl-compact { opacity: 0; transform: scale(0.86); filter: blur(4px); pointer-events: none; }
+.isl-notice { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; gap: calc(18 * var(--u));
+  padding: calc(14 * var(--u)) calc(24 * var(--u)) calc(16 * var(--u));
+  opacity: 0; transform: scale(1.08); filter: blur(6px); pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.42s var(--isl-ease), filter 0.25s ease; }
+.is-notice .isl-notice { opacity: 1; transform: none; filter: none; pointer-events: auto; transition-delay: 0.08s; }
+.isl-notice-ring { flex: none; stroke: var(--ring-focus); }
+.isl-notice-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(2 * var(--u)); }
+.isl-notice-text strong { font-size: calc(18 * var(--u)); font-weight: 900; }
+.isl-notice-text span { font-size: calc(13 * var(--u)); color: rgba(255,255,255,0.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.isl-notice-actions { display: flex; gap: calc(8 * var(--u)); margin-top: calc(10 * var(--u)); }
+.isl-pill { height: calc(34 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; border-radius: 999px; font: inherit; font-size: calc(13 * var(--u)); font-weight: 700;
+  background: rgba(255,255,255,0.12); color: #fff; cursor: pointer; transition: background-color 0.18s ease, transform 0.18s var(--ease-apple); }
+.isl-pill:hover { background: rgba(255,255,255,0.18); }
+.isl-pill:active { transform: scale(0.94); }
+.isl-pill.is-primary { background: #fff; color: var(--ink, #1a1238); }
+.isl-pill:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* 墨晕灯效时岛是宣纸色：圆环和字改成墨色 */
+.isl-root.is-ink { --ring-track: rgba(29,26,22,0.14); --ring-focus: #1d1a16; --ring-break: #2f8a6a; }
+.isl-root.is-ink .isl-sep { background: rgba(29,26,22,0.16); }
+.isl-root.is-ink .isl-pomo { background: rgba(29,26,22,0.06); box-shadow: inset 0 0 0 1px rgba(29,26,22,0.08); }
+.isl-root.is-ink .isl-pomo-text small, .isl-root.is-ink .isl-notice-text span { color: rgba(29,26,22,0.6); }
+.isl-root.is-ink .isl-pill { background: rgba(29,26,22,0.08); color: #1d1a16; }
+.isl-root.is-ink .isl-pill.is-primary { background: #1d1a16; color: #efe9dc; }
+
 @media (prefers-reduced-motion: reduce) {
-  .isl, .isl-compact, .isl-full { transition-duration: 0.01s !important; }
+  .isl, .isl-compact, .isl-full, .isl-notice, .isl-ring-arc { transition-duration: 0.01s !important; }
 }
 
 /* 设置里的灵动岛页：灯效关掉时样式不能选；唱片编辑嵌在分组卡片里 */
@@ -1408,3 +1476,57 @@ html[data-window="chat"]:has(.chat--dark), html[data-window="chat"]:has(.chat--d
   color: #f3eee3;
 }
 .fs.is-ink .st-backdrop, .fs.is-ink .sheet-backdrop { background: rgba(29,26,22,0.16); }
+
+/* ------------------------------------------------------------------ 助眠模式：一扇下雨的窗 */
+.sleep { position: absolute; inset: 0; overflow: hidden; background: #070A18; animation: sleep-in 0.7s var(--ease-apple) both; }
+.sleep-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.sleep-fog { position: absolute; inset: 0; }
+.sleep-video { object-fit: cover; transition: filter 0.9s ease; }
+/* 拖雨量滑块时天色、雾气慢慢跟上，不突变 */
+.sleep-fade { transition: opacity 0.9s ease; }
+.sleep-frame { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* 无边框玻璃：四角压暗，加一道很淡的斜向反光 */
+.sleep-frame--none { background:
+  linear-gradient(112deg, transparent 34%, rgba(255,255,255,0.035) 43%, rgba(255,255,255,0.012) 49%, transparent 56%),
+  radial-gradient(120% 100% at 50% 45%, transparent 55%, rgba(6,4,20,0.5) 100%); }
+@keyframes sleep-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
+@keyframes sleep-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(1.02); } }
+.presence.is-closing > .sleep { animation: sleep-out 0.45s ease-in forwards !important; }
+/* 进助眠模式：原来的歌词、唱片先收起来 */
+.fs.is-sleepmode .mode-layer { animation: mode-out 0.3s ease-in both !important; pointer-events: none; }
+.fs.is-sleepmode .mode-layer * { pointer-events: none !important; }
+
+/* 顶栏左边：助眠模式的标记和退出 */
+.sleep-chip { margin-right: auto; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 6px 0 18px; border-radius: 999px;
+  font-size: 15px; font-weight: 600; animation: seg-in 0.32s var(--ease-apple) both; }
+.sleep-chip svg { opacity: 0.9; }
+.sleep-chip button { height: 40px; margin-left: 6px; padding: 0 18px; border: 0; border-radius: 999px; background: rgba(255,255,255,0.16); color: #fff;
+  font: inherit; font-weight: 400; cursor: pointer; transition: background-color 0.2s ease, transform 0.18s var(--ease-apple); }
+.sleep-chip button:hover { background: rgba(255,255,255,0.26); }
+.sleep-chip button:active { transform: scale(0.94); }
+/* 顶栏正中：雨量，从晴天拖到瓢泼大雨 */
+.sleep-rain { position: absolute; left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 20px 0 18px;
+  border-radius: 999px; animation: seg-in 0.32s var(--ease-apple) both; }
+.sleep-rain svg { flex-shrink: 0; opacity: 0.85; }
+.sleep-rain-word { min-width: 5em; font-size: 14px; color: rgba(255,255,255,0.82); white-space: nowrap; }
+.sleep-range { -webkit-appearance: none; appearance: none; width: 260px; height: 24px; margin: 0; background: transparent; cursor: pointer; }
+.sleep-range::-webkit-slider-runnable-track { height: 5px; border-radius: 999px;
+  background: linear-gradient(90deg, #fff var(--p, 0%), rgba(255,255,255,0.24) var(--p, 0%)); }
+.sleep-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7.5px; border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 8px rgba(8,4,32,0.45); transition: transform 0.18s var(--ease-apple); }
+.sleep-range:active::-webkit-slider-thumb { transform: scale(1.15); }
+.sleep-range:focus-visible { outline: 2px solid #fff; outline-offset: 4px; border-radius: 999px; }
+/* 窗下方的一句歌词：小、淡，不抢窗外的景色 */
+.sleep-lyric { position: absolute; z-index: 1; left: 220px; right: 220px; bottom: 156px; margin: 0; text-align: center; font-size: 24px; font-weight: 500;
+  line-height: 1.4; color: rgba(255,255,255,0.74); text-shadow: 0 2px 18px rgba(4,3,16,0.85), 0 0 2px rgba(4,3,16,0.6); pointer-events: none;
+  animation: sleep-lyric-in 0.9s ease both; }
+@keyframes sleep-lyric-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sleep, .sleep-lyric, .sleep-chip, .sleep-rain { animation-duration: 0.01s !important; }
+  .sleep-fade { transition: none; }
+}
+/* 设置里的景色、窗框预览 */
+.st-card .st-tiles.st-tiles--scene { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.st-card .st-tiles.st-tiles--frame { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.st-scene-cv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.st-tiles--frame .st-thumb svg { position: absolute; inset: 0; }

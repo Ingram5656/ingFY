@@ -16,6 +16,10 @@ interface Props {
   /** 剩余时间文字，比如"还剩 23 分钟"；没开时为空 */
   sleepLeft: string;
   onSleep: (m: SleepMode) => void;
+  /** 助眠模式：画面变成一扇窗；开着时多一行去设置里换景色和窗框 */
+  sleepMode: boolean;
+  onSleepMode: (v: boolean) => void;
+  onSleepSettings: () => void;
   /** 歌词界面开着拾音灯时才能隐藏歌词 / 专辑信息（不然画面就空了），其他时候不显示这两项 */
   view: { showLyrics: boolean; showAlbum: boolean; onLyrics: (v: boolean) => void; onAlbum: (v: boolean) => void } | null;
   fullscreen: boolean;
@@ -93,7 +97,7 @@ export function useRepeat(step: () => void) {
 }
 
 /**
- * 右上角"更多"里的小菜单：显示内容、歌词时间微调、换一个歌词、分享歌词、睡眠定时、全屏。
+ * 右上角"更多"里的小菜单：显示内容、歌词时间微调、换一个歌词、分享歌词、睡眠定时、助眠模式、全屏。
  * 不常用的功能都收在这里，平时界面保持干净。
  */
 export function MoreMenu(p: Props) {
@@ -165,6 +169,13 @@ export function MoreMenu(p: Props) {
           ))}
         </div>
       </div>
+      <MenuSwitch label={t("助眠模式")} sub={t("画面变成一扇窗，可以下雨")} on={p.sleepMode} onChange={p.onSleepMode} />
+      {p.sleepMode && (
+        <button className="mm-link" onClick={p.onSleepSettings}>
+          <span>{t("天气、景色和窗框")}</span>
+          <Chevron />
+        </button>
+      )}
 
       <div className="mm-sep" />
 

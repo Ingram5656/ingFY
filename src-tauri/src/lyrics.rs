@@ -101,11 +101,34 @@ pub struct LyricOption {
 }
 
 /// 网易云和 LRCLIB 各取最多 10 个候选，按和当前歌曲的相似度排好
-pub async fn options(title: &str, artist: &str, duration_ms: i64) -> Vec<LyricOption> {
+/// "换一个歌词"的搜索结果：候选列表，加上这次没连上的歌词源
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OptionsReport {
+    pub options: Vec<LyricOption>,
+    /// 请求失败（断网、超时、对方返回错误）的歌词源："netease" / "lrclib"。
+    /// 和"搜到了但没有结果"分开，界面才能告诉用户是连不上，而不是歌词库里没有
+    pub failed: Vec<String>,
+}
+
+pub async fn options(title: &str, artist: &str, duration_ms: i64) -> OptionsReport {
     let title = clean_title(title);
-    let mut out = netease::options(&title, artist, duration_ms).await.unwrap_or_default();
-    out.extend(lrclib_options(&title, artist).await.unwrap_or_default());
-    out
+    let mut report = OptionsReport { options: Vec::new(), failed: Vec::new() };
+    match netease::options(&title, artist, duration_ms).await {
+        Ok(v) => report.options.extend(v),
+        Err(e) => {
+            eprintln!("[lyrics] 网易云候选失败：{e}");
+            report.failed.push("netease".into());
+        }
+    }
+    match lrclib_options(&title, artist).await {
+        Ok(v) => report.options.extend(v),
+        Err(e) => {
+            eprintln!("[lyrics] LRCLIB 候选失败：{e}");
+            report.failed.push("lrclib".into());
+        }
+    }
+    report
 }
 
 /// 按用户选定的候选取歌词
@@ -141,10 +164,8 @@ async fn lrclib_options(title: &str, artist: &str) -> Result<Vec<LyricOption>, r
         .get("https://lrclib.net/api/search")
         .query(&[("track_name", title), ("artist_name", artist)])
         .send()
-        .await?;
-    if !resp.status().is_success() {
-        return Ok(vec![]);
-    }
+        .await?
+        .error_for_status()?;
     let items: Vec<LrcLibItem> = resp.json().await?;
     Ok(items
         .into_iter()
@@ -291,7 +312,7 @@ mod netease {
         let client = client()?;
         let artists = split_artists(artist);
         let first = artists.first().cloned().unwrap_or_default();
-        let songs = search(&client, format!("{title} {first}").trim()).await?;
+        let songs = search_strict(&client, format!("{title} {first}").trim()).await?;
         let mut scored: Vec<(f64, LyricOption)> = songs
             .iter()
             .filter_map(|s| {
@@ -318,6 +339,20 @@ mod netease {
             .collect();
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         Ok(scored.into_iter().take(10).map(|(_, o)| o).collect())
+    }
+
+    /// 和 search 一样，但对方返回错误状态码时算失败（"换一个歌词"要区分连不上和没结果；
+    /// 自动匹配仍用 search，错误状态码当作没搜到，好接着试 LRCLIB）
+    async fn search_strict(client: &reqwest::Client, q: &str) -> Result<Vec<Value>, reqwest::Error> {
+        let resp = client
+            .get("https://music.163.com/api/cloudsearch/pc")
+            .header("Referer", "https://music.163.com/")
+            .query(&[("s", q), ("type", "1"), ("limit", "20"), ("offset", "0")])
+            .send()
+            .await?
+            .error_for_status()?;
+        let v: Value = resp.json().await?;
+        Ok(v.pointer("/result/songs").and_then(|s| s.as_array()).cloned().unwrap_or_default())
     }
 
     async fn search(client: &reqwest::Client, q: &str) -> Result<Vec<Value>, reqwest::Error> {
