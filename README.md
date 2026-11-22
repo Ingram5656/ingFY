@@ -227,21 +227,41 @@ taskkill /IM ingfy.exe /F
 
 ### 发布新版本（让旧版本能收到更新提示）
 
+推一个标签，GitHub 会在它自己的 Windows 电脑上打包（`.github/workflows/release.yml`），连同自动更新用的签名文件和 `latest.json` 一起放进 Release 草稿。
+
 1. 改版本号，三处保持一致：
    - `package.json` 的 `version`
    - `src-tauri/Cargo.toml` 的 `version`
    - `src-tauri/tauri.conf.json` 的 `version`
-2. 在 `CHANGELOG.md` 里把"未发布"的内容整理到新版本下。
-3. `pnpm tauri build` 打包。
-4. 在 GitHub 上新建 Release：标签写 `v` 加版本号（例如 `v1.1.0`），把 `ingfy_x.y.z_x64-setup.exe` 拖进附件，说明可以直接复制 CHANGELOG 里这一版的内容。
+2. 在 `CHANGELOG.md` 里把"未发布"的内容整理到新版本下，标题写成 `## [3.2.0] - 日期` 这样（GitHub 按这个取说明）。
+3. 提交、推送，然后推一个标签：
 
-旧版本启动时会读取仓库最新的 Release；发现版本号更高、并且附件里有 `.exe` 安装程序时，设置按钮上会出现小红点，用户点"立即更新"即可下载并安装。
+   ```
+   git tag v3.2.0
+   git push origin v3.2.0
+   ```
+
+4. 十几分钟后 Releases 页面里会多一个草稿，附件里有安装包、`.sig` 签名文件和 `latest.json`。检查一遍，点 **Publish release**。
+
+软件启动时会查最新的 Release，有新版本时设置按钮上出现小红点，用户点"立即更新"：
+- 有 `latest.json`（按上面的方式发的版本）：后台下载、核对签名、安装、重新打开，不用自己点安装程序。
+- 没有（手动传的安装包）：下载 `.exe` 安装程序并打开。
+
+**签名**：仓库的 Settings → Secrets and variables → Actions 里要有 `TAURI_SIGNING_PRIVATE_KEY`（私钥文件的内容）和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（密码），和 ingwork 用的是同一对。公钥写在 `src-tauri/src/lib.rs` 的 `UPDATER_PUBKEY` 和 `tauri.conf.json` 的 `plugins.updater.pubkey`。私钥丢了以后，老用户就收不到自动更新了，只能手动下载。
+
+自己电脑上用 `scripts\build-release.cmd` 打包不签名，不需要私钥。
 
 ---
 
 ## 项目结构
 
 ```
+.github/workflows/
+  release.yml              推版本标签后自动打包、签名、生成 latest.json
+  check.yml                推到 main 时编译一遍、跑测试
+scripts/
+  build-release.cmd        在自己电脑上打包
+  make-ambient.mjs         生成助眠模式的鸟声、车声、风声
 src-tauri/                 Rust 后端
   src/lib.rs               命令、托盘、快捷键、窗口、更新、后台轮询
   src/smtc.rs              读取正在播放的歌曲、播放控制、跳转（Windows 媒体控件）

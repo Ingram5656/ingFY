@@ -1,6 +1,6 @@
 /**
- * 助眠模式的环境音：雨声、海浪、褐噪音、白噪音，可以几种叠在一起，各自调音量。
- * 声音文件在 public/ambient/ 里（和 ing番茄钟用的是同一套），循环播放。
+ * 助眠模式的环境音：雨声、海浪、褐噪音、白噪音、鸟声、车声、风声，可以几种叠在一起，各自调音量。
+ * 声音文件在 public/ambient/ 里，循环播放。鸟声、车声、风声是 scripts/make-ambient.mjs 算出来的。
  *
  * 谁在要声音有两处：助眠模式开着、音乐在放时的"正在放"，和设置里的"试听"。试听优先。
  * 雨声跟着画面走：晴天不响，雨量越大越响；滑块只管它的音量上限。
@@ -12,13 +12,16 @@ export const AMBIENT_SOUNDS = [
   { id: "waves", label: "海浪" },
   { id: "brown", label: "褐噪音" },
   { id: "white", label: "白噪音" },
+  { id: "birds", label: "鸟声" },
+  { id: "traffic", label: "车声" },
+  { id: "wind", label: "风声" },
 ] as const;
 export type AmbientId = (typeof AMBIENT_SOUNDS)[number]["id"];
 /** 每种声音的音量 0–1。0 或者没写就是不放 */
 export type AmbientMix = Partial<Record<string, number>>;
 
 /** 几个文件本身响度不一样，这里拉平；白噪音听着刺耳，压低一些 */
-const BASE: Record<AmbientId, number> = { rain: 1, waves: 1.1, brown: 0.85, white: 0.6 };
+const BASE: Record<AmbientId, number> = { rain: 1, waves: 1.1, brown: 0.85, white: 0.6, birds: 1.2, traffic: 1, wind: 1 };
 
 /** 雨量 0–100 → 雨声有多响（0–1）：晴天没有，毛毛雨轻轻的，瓢泼大雨最响 */
 export function rainLoudness(rain: number): number {
@@ -29,7 +32,7 @@ export function rainLoudness(rain: number): number {
 
 /** 设置里的滑块 + 现在的雨量 → 每种声音实际放多大声 */
 export function ambientLevels(mix: AmbientMix, rain: number): Record<AmbientId, number> {
-  const out = { rain: 0, waves: 0, brown: 0, white: 0 };
+  const out = Object.fromEntries(AMBIENT_SOUNDS.map(({ id }) => [id, 0])) as Record<AmbientId, number>;
   for (const { id } of AMBIENT_SOUNDS) {
     const v = Math.max(0, Math.min(1, mix[id] ?? 0));
     // 滑块按听感走：一半的位置听着是一半响

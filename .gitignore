@@ -4,3 +4,4 @@ src-tauri/target
 src-tauri/gen
 *.log
 scripts/memory-*.csv
+public/ambient/*.wav

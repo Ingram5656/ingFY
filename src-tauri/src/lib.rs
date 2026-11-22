@@ -578,9 +578,39 @@ fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
     Ok(m.is_enabled().unwrap_or(enabled))
 }
 
-// ---------- 更新：查 GitHub 上的最新版本，下载安装程序并运行 ----------
+// ---------- 更新 ----------
+//
+// 两种方式：
+// - 自动更新：读最新 Release 里的 latest.json（GitHub 打包时生成，带签名），用 Tauri 的更新插件下载、
+//   核对签名、静默安装、重启。签名的私钥在 GitHub 仓库的 Secrets 里，公钥在下面，和 ingwork 用的是同一对。
+// - 以前的方式：最新 Release 没有 latest.json（手动传的安装包）时，下载 .exe 安装程序交给用户装。
 
 const RELEASES_API: &str = "https://api.github.com/repos/Ingram5656/ingFY/releases/latest";
+const MANIFEST_URL: &str = "https://github.com/Ingram5656/ingFY/releases/latest/download/latest.json";
+/// 自动更新用的签名公钥（`pnpm tauri signer generate` 生成的 .pub 文件的内容）。公钥本来就是公开的
+const UPDATER_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA0REZGNzgxNEU3OEQ3OUIKUldTYjEzaE9nZmZmQkRZSEM1WWxjeGxwVTFjSEYxUlhIalVZMWhRYXVWVG1mZWJVQUQ0YVloUVUK";
+
+/// 自动更新查到的新版本，等用户点"立即更新"
+#[derive(Default)]
+struct PendingUpdate(Mutex<Option<tauri_plugin_updater::Update>>);
+
+/// 用更新插件查 latest.json。查不到、没有新版本、出错都返回 None，交给以前的方式
+async fn check_seamless(app: &AppHandle, current: &str) -> Option<UpdateInfo> {
+    use tauri_plugin_updater::UpdaterExt;
+    let url = tauri::Url::parse(MANIFEST_URL).ok()?;
+    let updater = app.updater_builder().pubkey(UPDATER_PUBKEY).endpoints(vec![url]).ok()?.build().ok()?;
+    let update = updater.check().await.ok()??;
+    let info = UpdateInfo {
+        current: current.to_string(),
+        latest: update.version.clone(),
+        has_update: true,
+        installer_url: Some(update.download_url.to_string()),
+        page_url: Some(format!("https://github.com/Ingram5656/ingFY/releases/tag/v{}", update.version)),
+        notes: update.body.clone().unwrap_or_default(),
+    };
+    *app.state::<PendingUpdate>().0.lock().unwrap_or_else(|e| e.into_inner()) = Some(update);
+    Some(info)
+}
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -601,6 +631,9 @@ fn version_tuple(v: &str) -> Vec<u64> {
 #[tauri::command]
 async fn check_update(app: AppHandle) -> Result<UpdateInfo, String> {
     let current = app.package_info().version.to_string();
+    if let Some(info) = check_seamless(&app, &current).await {
+        return Ok(info);
+    }
     let client = reqwest::Client::builder()
         .user_agent("ingfy-updater")
         .timeout(std::time::Duration::from_secs(10))
@@ -641,6 +674,15 @@ async fn check_update(app: AppHandle) -> Result<UpdateInfo, String> {
 /// 下载安装程序到临时文件夹并运行，然后退出 ingfy（安装程序需要替换正在运行的文件）
 #[tauri::command]
 async fn install_update(app: AppHandle, url: String) -> Result<(), String> {
+    // 自动更新查到的那一版：下载、核对签名、静默安装。装好后安装程序会把 ingfy 重新打开
+    let pending = app.state::<PendingUpdate>().0.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if let Some(update) = pending {
+        if update.download_url.as_str() == url {
+            let bytes = update.download(|_, _| {}, || {}).await.map_err(|_| "下载更新失败，检查一下网络".to_string())?;
+            update.install(bytes).map_err(|_| "新版本没装上，请到发布页手动下载".to_string())?;
+            app.restart();
+        }
+    }
     if !url.starts_with("https://github.com/") && !url.starts_with("https://objects.githubusercontent.com/") {
         return Err("更新地址不对".into());
     }
@@ -1123,7 +1165,9 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--autostart"]),
         ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
+        .manage(PendingUpdate::default())
         // 点主窗口的关闭按钮：缩到托盘继续运行（桌面歌词和快捷键都还在），从托盘菜单退出
         .on_window_event(|window, event| {
             // 灵动岛被拖动：记下时间，停下来后再判断要不要吸附顶边

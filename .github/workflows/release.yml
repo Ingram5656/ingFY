@@ -1,0 +1,83 @@
+# 推一个 v 开头的标签（比如 v3.2.0）后，GitHub 打一个 Windows 安装包，连同自动更新用的签名文件和 latest.json
+# 放进一个 Release 草稿。说明取 CHANGELOG.md 里这一版的内容。检查一遍再在网页上点 Publish release。
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  # 也可以在 Actions 页面手动跑一次，试试能不能打包
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ingfy 只有 Windows 版（读正在播放的歌用的是 Windows 的接口）
+          - platform: windows-latest
+            args: ""
+            rust_targets: ""
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: 装依赖
+        run: pnpm install --frozen-lockfile
+
+      # 从 CHANGELOG.md 里取这一版的说明：从 "## [3.2.0]" 那一行到下一个 "## " 之前
+      - name: 取这一版的更新说明
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          body=$(awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$(echo "$body" | tr -d '[:space:]')" ]; then
+            body="见 CHANGELOG.md"
+          fi
+          {
+            echo "body<<INGWORK_NOTES_END"
+            echo "$body"
+            echo "INGWORK_NOTES_END"
+          } >> "$GITHUB_OUTPUT"
+
+      # 自动更新用的签名：用仓库 Secrets 里的私钥签（见 README"在软件里直接装新版"）。
+      # tauri.updater.conf.json 打开 createUpdaterArtifacts，多打一份带签名的更新包和 latest.json。
+      # 只在这里打开，自己电脑上用脚本打包时没有私钥也能打
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: "ingfy ${{ github.ref_name }}"
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }} --config src-tauri/tauri.updater.conf.json
